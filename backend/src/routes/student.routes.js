@@ -9,6 +9,11 @@ router.use(authenticateToken);
 // Student Exam/Module routes
 router.get('/tests', studentController.getStudentTests);
 router.get('/test/:id', studentController.getTestDetails);
+router.get('/online-exams', studentController.getOnlineExams);
+router.get('/completed-exams', studentController.getCompletedExams);
+router.post('/tests/:id/start', studentController.startTest);
+router.post('/tests/:id/submit', studentController.submitOnlineExam);
+router.get('/auto-practice-questions', studentController.getAutoPracticeQuestions);
 router.get('/unlocked-modules', studentController.getUnlockedModules);
 router.get('/grammar-progress', studentController.getGrammarProgress);
 router.get('/test-result/:id', studentController.getTestResultById);

@@ -1,425 +1,531 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
-
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import api from '../../services/api';
-import { BrainCircuit, BookOpen, ChevronLeft, CheckCircle, XCircle } from 'lucide-react';
+import api, { getAutoPracticeQuestions } from '../../services/api';
+import {
+  BrainCircuit,
+  BookOpen,
+  ChevronLeft,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Sparkles,
+  ArrowRight,
+  RotateCcw,
+  Layers,
+  Award
+} from 'lucide-react';
 
-const CRTModules = () => {
-  const [view, setView] = useState('main'); // 'main', 'module_list', 'taking_module', 'result'
-  const [modules, setModules] = useState([]);
-  const [currentModule, setCurrentModule] = useState(null);
-  const [moduleList, setModuleList] = useState([]);
+const CRT_CATEGORIES = [
+  {
+    id: 'aptitude',
+    name: 'Quantitative Aptitude',
+    icon: '🧮',
+    color: 'from-blue-600 to-indigo-600',
+    description: 'Master arithmetic, percentages, speed-distance, work-time, and permutations.'
+  },
+  {
+    id: 'reasoning',
+    name: 'Logical Reasoning',
+    icon: '🧩',
+    color: 'from-emerald-600 to-teal-600',
+    description: 'Sharpen syllogisms, blood relations, series completion, coding-decoding, and puzzles.'
+  },
+  {
+    id: 'technical',
+    name: 'Technical & CS',
+    icon: '⚙️',
+    color: 'from-purple-600 to-violet-600',
+    description: 'Practice core computer science, data structures, algorithms, DBMS, and OOP concepts.'
+  }
+];
+
+export default function CRTModules() {
+  const [view, setView] = useState('main'); // 'main', 'taking_module', 'result'
+  const [currentCategory, setCurrentCategory] = useState(null);
+  const [questions, setQuestions] = useState([]);
   const [moduleResult, setModuleResult] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const { error: showError, success } = useNotification();
   const { user } = useAuth();
 
-  const resetToMain = () => {
-    setView('main');
-    setCurrentModule(null);
-    setModuleList([]);
-    setModuleResult(null);
-  };
-
-  const handleSelectModule = async (module) => {
-    setLoading(true);
+  // Start 25-question practice test automatically
+  const handleStartPractice = async (category) => {
     try {
-      // Fetch CRT tests for this module
-      const res = await api.get('/student/tests', { 
-        params: { 
-          module: module.id,
-          category: 'CRT'
-        } 
-      });
-      setModuleList(res.data.data);
-      setCurrentModule(module);
-      setView('module_list');
+      setLoading(true);
+      setCurrentCategory(category);
+      const res = await getAutoPracticeQuestions('CRT', category.id, 25);
+      const loadedQuestions = res?.data?.questions || [];
+      if (loadedQuestions.length === 0) {
+        showError('No questions available at the moment. Please try again.');
+        return;
+      }
+      setQuestions(loadedQuestions);
+      setView('taking_module');
     } catch (err) {
-      showError('Failed to load CRT modules.');
+      console.error('Error starting CRT practice:', err);
+      showError('Failed to load practice questions.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSelectPracticeModule = (module) => {
-    setCurrentModule(module);
-    setView('taking_module');
-  };
-
-  const handleModuleSubmit = (result) => {
+  const handleFinishTest = (result) => {
     setModuleResult(result);
     setView('result');
   };
 
-  const fetchModules = useCallback(async () => {
-    try {
-      setLoading(true);
-      // Define CRT modules
-      const crtModules = [
-        { id: 'CRT_APTITUDE', name: 'Aptitude', icon: '🧮', color: 'bg-blue-500' },
-        { id: 'CRT_REASONING', name: 'Reasoning', icon: '🧩', color: 'bg-green-500' },
-        { id: 'CRT_TECHNICAL', name: 'Technical', icon: '⚙️', color: 'bg-purple-500' }
-      ];
-      setModules(crtModules);
-    } catch (err) {
-      showError('Failed to load CRT modules.');
-      setModules([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [showError]);
-
-  useEffect(() => {
-    if (view === 'main') {
-      fetchModules();
-    } else if (view === 'module_list' && currentModule) {
-      const fetchModules = async () => {
-        try {
-          setLoading(true);
-          const res = await api.get('/student/tests', { 
-            params: { 
-              module: currentModule.id,
-              category: 'CRT'
-            } 
-          });
-          setModuleList(res.data.data);
-        } catch (err) {
-          showError('Failed to load modules for this category.');
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchModules();
-    }
-  }, [view, currentModule, showError, fetchModules]);
-
-  const renderContent = () => {
-    if (loading) {
-      return (
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <LoadingSpinner />
-        </div>
-      );
-    }
-
-    switch (view) {
-      case 'module_list':
-        return <ModuleListView category={currentModule} modules={moduleList} onSelectModule={handleSelectPracticeModule} onBack={() => setView('main')} />;
-      case 'taking_module':
-        return <ModuleTakingView module={currentModule} onSubmit={handleModuleSubmit} onBack={() => setView('module_list')}/>;
-      case 'result':
-        return <ResultView result={moduleResult} onBack={() => { setView('module_list'); setModuleResult(null); }} />;
-      default: // 'main'
-        return <MainView modules={modules} onSelectModule={handleSelectModule} />;
-    }
+  const handleBackToMain = () => {
+    setView('main');
+    setCurrentCategory(null);
+    setQuestions([]);
+    setModuleResult(null);
   };
 
   return (
-    <div className="w-full">
-      {renderContent()}
-    </div>
-  );
-};
-
-const MainView = ({ modules, onSelectModule }) => {
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <h1 className="text-3xl sm:text-4xl font-bold text-gray-800 mb-8">CRT Modules</h1>
-      <p className="text-gray-600 mb-8 text-lg">Practice Campus Recruitment Test modules to improve your skills.</p>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {modules.map(module => (
-          <motion.div
-            key={module.id}
-            whileHover={{ scale: 1.05 }}
-            className="bg-white p-8 rounded-2xl shadow-lg flex flex-col items-center text-center cursor-pointer transition-all duration-300 hover:shadow-xl"
-            onClick={() => onSelectModule(module)}
-          >
-            <div className={`w-20 h-20 rounded-full ${module.color} flex items-center justify-center text-white text-3xl mb-6`}>
-              {module.icon}
-            </div>
-            <h2 className="text-2xl font-semibold text-gray-800 mb-3">{module.name}</h2>
-            <p className="text-gray-500 text-base">Practice {module.name.toLowerCase()} questions for campus recruitment.</p>
-          </motion.div>
-        ))}
+    <div className="min-h-screen bg-slate-50 text-slate-900 p-6 md:p-8">
+      <div className="max-w-6xl mx-auto">
+        {loading ? (
+          <div className="py-24 flex flex-col items-center justify-center gap-3">
+            <LoadingSpinner />
+            <p className="text-sm text-slate-500 font-medium">Assembling 25 practice questions...</p>
+          </div>
+        ) : view === 'taking_module' ? (
+          <CRTTestTakingView
+            category={currentCategory}
+            questions={questions}
+            onSubmit={handleFinishTest}
+            onBack={handleBackToMain}
+          />
+        ) : view === 'result' ? (
+          <CRTResultView
+            category={currentCategory}
+            result={moduleResult}
+            onRetake={() => handleStartPractice(currentCategory)}
+            onBack={handleBackToMain}
+          />
+        ) : (
+          <CRTMainView
+            categories={CRT_CATEGORIES}
+            onStartPractice={handleStartPractice}
+          />
+        )}
       </div>
-    </motion.div>
-  );
-};
-
-const ModuleListView = ({ category, modules, onSelectModule, onBack }) => (
-  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-    <div className="flex items-center mb-8">
-      <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-200 mr-4">
-        <ChevronLeft className="h-6 w-6" />
-      </button>
-      <h1 className="text-3xl font-bold text-gray-800">{category.name} Tests</h1>
     </div>
-    
-    {modules.length > 0 ? (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {modules.map(module => (
+  );
+}
+
+/**
+ * Main View: Select CRT Category to auto-start 25 questions
+ */
+function CRTMainView({ categories, onStartPractice }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      {/* Header Banner */}
+      <div className="bg-gradient-to-r from-indigo-700 via-blue-600 to-indigo-800 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden">
+        <div className="relative z-10 max-w-2xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-white/20 backdrop-blur-md mb-3">
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span>Campus Recruitment Training</span>
+          </div>
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
+            CRT Practice Modules
+          </h1>
+          <p className="text-indigo-100 text-sm md:text-base mt-2">
+            Dynamic 25-question adaptive assessments automatically drawn from the Question Bank. Select any topic to begin practicing immediately.
+          </p>
+        </div>
+      </div>
+
+      {/* Category Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {categories.map(cat => (
           <motion.div
-            key={module._id}
-            whileHover={{ scale: 1.05 }}
-            className="bg-white p-6 rounded-xl shadow-lg cursor-pointer flex flex-col justify-between"
-            onClick={() => onSelectModule(module)}
+            key={cat.id}
+            whileHover={{ y: -4 }}
+            className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
           >
             <div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">{module.name}</h3>
-              <p className="text-gray-500 text-sm mb-4">Test your {category.name.toLowerCase()} skills.</p>
-            </div>
-            <div className="mt-4">
-              {/* Progress Bar with Highest Score */}
-              <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
-                <div 
-                  className="bg-blue-600 h-3 rounded-full transition-all duration-300" 
-                  style={{ 
-                    width: `${module.highest_score ? Math.min(module.highest_score, 100) : 0}%` 
-                  }}
-                ></div>
-              </div>
-              
-              {/* Progress Information */}
-              <div className="flex justify-between items-center text-sm text-gray-600">
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <span className="font-medium">
-                    {module.completed_count || 0} attempt{(module.completed_count || 0) !== 1 ? 's' : ''}
-                  </span>
+              <div className="flex items-center justify-between mb-4">
+                <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${cat.color} text-white flex items-center justify-center text-2xl shadow-md`}>
+                  {cat.icon}
                 </div>
-                <div className="text-right">
-                  <span className="font-semibold text-blue-600">
-                    {module.highest_score ? module.highest_score.toFixed(1) : '0'}%
-                  </span>
-                  <span className="text-gray-500 ml-1">best</span>
-                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">
+                  25 Questions
+                </span>
               </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">{cat.name}</h3>
+              <p className="text-xs text-slate-500 leading-relaxed mb-6">
+                {cat.description}
+              </p>
             </div>
+
+            <button
+              onClick={() => onStartPractice(cat)}
+              className="w-full inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-indigo-600 text-white py-3 px-4 rounded-xl font-semibold text-sm transition-colors shadow-sm"
+            >
+              <span>Start 25-Q Practice</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </motion.div>
         ))}
       </div>
-    ) : (
-      <div className="text-center py-16">
-        <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-          <BookOpen className="h-12 w-12 text-gray-400" />
-        </div>
-        <h2 className="text-2xl font-semibold text-gray-700 mb-2">No Tests Available</h2>
-        <p className="text-gray-500">Check back later for new {category.name.toLowerCase()} tests.</p>
-      </div>
-    )}
-  </motion.div>
-);
+    </motion.div>
+  );
+}
 
-const ModuleTakingView = ({ module, onSubmit, onBack }) => {
-  const [questions, setQuestions] = useState([]);
+/**
+ * 25-Question Test Taking Interface
+ */
+function CRTTestTakingView({ category, questions, onSubmit, onBack }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState({});
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const { error: showError, success } = useNotification();
+  const [timeLeft, setTimeLeft] = useState(30 * 60); // 30 minutes in seconds
 
   useEffect(() => {
-    const fetchModuleDetails = async () => {
-      try {
-        setLoading(true);
-        const res = await api.get(`/student/test/${module._id}`);
-        setQuestions(res.data.data.questions || []);
-      } catch (err) {
-        showError("Failed to load module questions.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (module?._id) {
-      fetchModuleDetails();
-    }
-  }, [module, showError]);
-
-  const handleAnswerChange = (questionId, answer) => {
-    setAnswers(prev => ({ ...prev, [questionId]: answer }));
-  };
-
-  const handleSubmit = async () => {
-    try {
-      const formData = new FormData();
-      formData.append('test_id', module._id);
-      
-      // Use question index format to match backend expectations
-      questions.forEach((question, index) => {
-        const questionId = question.question_id || question._id;
-        if (answers[questionId]) {
-          formData.append(`answer_${index}`, answers[questionId]);
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          handleSubmitTest();
+          return 0;
         }
+        return prev - 1;
       });
-      
-      const res = await api.post('/student/submit-practice-test', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      
-      if (res.data.success) {
-        success("Test submitted successfully!");
-        onSubmit(res.data.data);
-      } else {
-        showError(res.data.message || 'Failed to submit your answers.');
-      }
-    } catch (err) {
-      showError(err.response?.data?.message || 'Failed to submit your answers. Please try again.');
-    }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [answers]);
+
+  const formatTimer = (sec) => {
+    const mins = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${String(mins).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  if (loading) return <LoadingSpinner />;
-  if (questions.length === 0) return <div className="text-center p-8">This test has no questions.</div>;
+  const currentQ = questions[currentIndex];
+  const qId = currentQ?._id || currentQ?.id || currentIndex;
 
-  const currentQuestion = questions[currentQuestionIndex];
+  const handleSelectOption = (opt) => {
+    setAnswers(prev => ({
+      ...prev,
+      [qId]: opt
+    }));
+  };
+
+  const handleSubmitTest = () => {
+    let correctCount = 0;
+    questions.forEach((q, idx) => {
+      const id = q._id || q.id || idx;
+      const userAns = answers[id];
+      if (userAns && q.correct_answer && String(userAns).trim().toLowerCase() === String(q.correct_answer).trim().toLowerCase()) {
+        correctCount++;
+      }
+    });
+
+    const total = questions.length;
+    const score = Math.round((correctCount / total) * 100);
+
+    onSubmit({
+      score,
+      percentage: score,
+      correctCount,
+      totalQuestions: total,
+      answers,
+      questions
+    });
+  };
+
+  const answeredCount = Object.keys(answers).length;
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <div className="flex justify-between items-center mb-6">
-        <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-200">
-          <ChevronLeft className="h-6 w-6" />
-        </button>
-        <h1 className="text-2xl font-bold text-gray-800">{module.name}</h1>
-        <div className="text-sm text-gray-500">
-          Question {currentQuestionIndex + 1} of {questions.length}
+    <div className="space-y-6">
+      {/* Top Header */}
+      <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (window.confirm('Are you sure you want to exit this test session?')) {
+                onBack();
+              }
+            }}
+            className="p-2 rounded-xl text-slate-500 hover:bg-slate-100"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">{category?.name} Practice</h2>
+            <p className="text-xs text-slate-500">
+              Answered {answeredCount} of {questions.length} questions
+            </p>
+          </div>
+        </div>
+
+        {/* Timer */}
+        <div className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-xl text-sm font-bold border border-indigo-100">
+          <Clock className="w-4 h-4 animate-spin" />
+          <span>{formatTimer(timeLeft)}</span>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-lg p-8 max-w-4xl mx-auto">
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Question {currentQuestionIndex + 1}</h2>
-          <p className="text-lg text-gray-700 mb-6">{currentQuestion.question}</p>
-          
-          {currentQuestion.options && (
-            <div className="space-y-3">
-              {currentQuestion.options.map((option, index) => (
-                <label
-                  key={index}
-                  className={clsx(
-                    "flex items-center p-4 border-2 rounded-lg cursor-pointer transition-all duration-200",
-                    {
-                      "border-blue-500 bg-blue-50": answers[currentQuestion._id] === option,
-                      "border-gray-200 hover:border-gray-300": answers[currentQuestion._id] !== option
-                    }
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name={`question_${currentQuestion._id}`}
-                    value={option}
-                    checked={answers[currentQuestion._id] === option}
-                    onChange={(e) => handleAnswerChange(currentQuestion._id, e.target.value)}
-                    className="sr-only"
-                  />
-                  <span className="w-6 h-6 border-2 border-gray-300 rounded-full mr-3 flex items-center justify-center">
-                    {answers[currentQuestion._id] === option && (
-                      <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                    )}
-                  </span>
-                  <span className="text-gray-700">{option}</span>
-                </label>
-              ))}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Question Content Box */}
+        <div className="lg:col-span-3 space-y-6">
+          <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+            <div className="flex items-center justify-between">
+              <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold">
+                Question {currentIndex + 1} of {questions.length}
+              </span>
+              <span className="text-xs text-slate-400 font-medium">Multiple Choice</span>
             </div>
-          )}
+
+            <h3 className="text-lg md:text-xl font-bold text-slate-900 leading-relaxed">
+              {currentQ?.text}
+            </h3>
+
+            {/* Options */}
+            <div className="space-y-3 pt-2">
+              {currentQ?.options?.map((opt, oIdx) => {
+                const isSelected = answers[qId] === opt;
+                return (
+                  <button
+                    key={oIdx}
+                    type="button"
+                    onClick={() => handleSelectOption(opt)}
+                    className={`w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between ${
+                      isSelected
+                        ? 'border-indigo-600 bg-indigo-50/70 text-indigo-950 font-semibold shadow-sm'
+                        : 'border-slate-200 hover:border-slate-300 bg-white text-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                        isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {String.fromCharCode(65 + oIdx)}
+                      </span>
+                      <span className="text-sm">{opt}</span>
+                    </div>
+                    {isSelected && <CheckCircle className="w-5 h-5 text-indigo-600" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Controls */}
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+              <button
+                type="button"
+                disabled={currentIndex === 0}
+                onClick={() => setCurrentIndex(prev => prev - 1)}
+                className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 disabled:opacity-40"
+              >
+                Previous
+              </button>
+
+              {currentIndex === questions.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={handleSubmitTest}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-200"
+                >
+                  Submit Practice Test
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setCurrentIndex(prev => prev + 1)}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200"
+                >
+                  Next Question
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className="flex justify-between items-center">
+        {/* 25-Question Navigator Palette */}
+        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4 h-fit">
+          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+            Question Palette (25 Qs)
+          </h4>
+
+          <div className="grid grid-cols-5 gap-2">
+            {questions.map((q, idx) => {
+              const id = q._id || q.id || idx;
+              const isAnswered = answers[id] !== undefined;
+              const isCurrent = idx === currentIndex;
+
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setCurrentIndex(idx)}
+                  className={`w-9 h-9 rounded-xl font-bold text-xs transition-all flex items-center justify-center ${
+                    isCurrent
+                      ? 'ring-2 ring-indigo-600 bg-indigo-600 text-white'
+                      : isAnswered
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {idx + 1}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs text-slate-500">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-emerald-100 border border-emerald-300"></span>
+              <span>Answered ({answeredCount})</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-slate-100 border border-slate-300"></span>
+              <span>Unanswered ({questions.length - answeredCount})</span>
+            </div>
+          </div>
+
           <button
-            onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
-            disabled={currentQuestionIndex === 0}
-            className={clsx(
-              "px-6 py-2 rounded-lg font-medium transition-colors",
-              {
-                "bg-gray-200 text-gray-500 cursor-not-allowed": currentQuestionIndex === 0,
-                "bg-blue-500 text-white hover:bg-blue-600": currentQuestionIndex > 0
-              }
-            )}
+            type="button"
+            onClick={handleSubmitTest}
+            className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-xs font-bold transition-all"
           >
-            Previous
+            Finish & Submit
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Result & Feedback Screen
+ */
+function CRTResultView({ category, result, onRetake, onBack }) {
+  const isPassed = (result?.score || 0) >= 60;
+
+  return (
+    <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="space-y-6 max-w-3xl mx-auto">
+      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl text-center space-y-6">
+        <div className={`w-20 h-20 rounded-full mx-auto flex items-center justify-center text-3xl ${
+          isPassed ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'
+        }`}>
+          {isPassed ? <Award className="w-10 h-10" /> : <RotateCcw className="w-10 h-10" />}
+        </div>
+
+        <div>
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            Practice Result • {category?.name}
+          </span>
+          <h2 className="text-3xl font-extrabold text-slate-900 mt-1">
+            {isPassed ? 'Outstanding Performance!' : 'Keep Practicing!'}
+          </h2>
+          <p className="text-slate-500 text-sm mt-1">
+            {isPassed
+              ? 'You demonstrated strong proficiency across the assessment topics.'
+              : 'Review your incorrect answers below to strengthen your understanding.'}
+          </p>
+        </div>
+
+        {/* Score Ring / Metric */}
+        <div className="flex items-center justify-center gap-8 py-4">
+          <div>
+            <div className={`text-5xl font-black ${isPassed ? 'text-emerald-600' : 'text-slate-900'}`}>
+              {result.score}%
+            </div>
+            <span className="text-xs text-slate-400 font-semibold uppercase">Overall Score</span>
+          </div>
+
+          <div className="h-12 w-px bg-slate-200"></div>
+
+          <div>
+            <div className="text-5xl font-black text-slate-900">
+              {result.correctCount} / {result.totalQuestions}
+            </div>
+            <span className="text-xs text-slate-400 font-semibold uppercase">Correct Answers</span>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-center gap-3 pt-4">
+          <button
+            onClick={onRetake}
+            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-md shadow-indigo-200 transition-all"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>Retake 25 Questions</span>
           </button>
 
-          {currentQuestionIndex === questions.length - 1 ? (
-            <button
-              onClick={handleSubmit}
-              className="px-8 py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors"
-            >
-              Submit Test
-            </button>
-          ) : (
-            <button
-              onClick={() => setCurrentQuestionIndex(prev => Math.min(questions.length - 1, prev + 1))}
-              className="px-6 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors"
-            >
-              Next
-            </button>
-          )}
+          <button
+            onClick={onBack}
+            className="px-6 py-3 rounded-xl border border-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-100 transition-colors"
+          >
+            Back to Modules
+          </button>
         </div>
       </div>
-    </motion.div>
-  );
-};
 
-const ResultView = ({ result, onBack }) => {
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <div className="flex justify-center items-center mb-8">
-        <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-200 mr-4">
-          <ChevronLeft className="h-6 w-6" />
-        </button>
-        <h1 className="text-3xl font-bold text-gray-800">Test Results</h1>
-      </div>
+      {/* Answer Key & Explanation Review */}
+      {Array.isArray(result?.questions) && (
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+          <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+            Detailed Review ({result.questions.length} Questions)
+          </h3>
 
-      <div className="bg-white rounded-2xl shadow-lg p-8 max-w-2xl mx-auto text-center">
-        <div className="mb-8">
-          {result.average_score >= 60 ? (
-            <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="h-12 w-12 text-green-500" />
-            </div>
-          ) : (
-            <div className="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <XCircle className="h-12 w-12 text-red-500" />
-            </div>
-          )}
-          
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">
-            {result.average_score >= 60 ? 'Great Job!' : 'Keep Practicing!'}
-          </h2>
-          
-          <div className="text-6xl font-bold mb-4">
-            <span className={result.average_score >= 60 ? 'text-green-500' : 'text-red-500'}>
-              {Math.round(result.average_score)}%
-            </span>
-          </div>
-          
-          <p className="text-gray-600 mb-6">
-            You answered {result.correct_answers} out of {result.total_questions} questions correctly.
-          </p>
-          
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="font-semibold text-gray-700">Correct Answers</div>
-              <div className="text-2xl font-bold text-green-500">{result.correct_answers}</div>
-            </div>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="font-semibold text-gray-700">Total Questions</div>
-              <div className="text-2xl font-bold text-gray-500">{result.total_questions}</div>
-            </div>
+          <div className="space-y-4">
+            {result.questions.map((q, idx) => {
+              const qId = q._id || q.id || idx;
+              const userAns = result.answers?.[qId];
+              const isCorrect = userAns && String(userAns).trim().toLowerCase() === String(q.correct_answer).trim().toLowerCase();
+
+              return (
+                <div
+                  key={idx}
+                  className={`p-4 rounded-2xl border text-left space-y-2 ${
+                    isCorrect ? 'border-emerald-200 bg-emerald-50/40' : 'border-rose-200 bg-rose-50/40'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-bold text-slate-900">
+                      Q{idx + 1}. {q.text}
+                    </p>
+                    {isCorrect ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-700 text-xs font-bold bg-emerald-100 px-2 py-0.5 rounded-full shrink-0">
+                        <CheckCircle className="w-3.5 h-3.5" /> Correct
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-rose-700 text-xs font-bold bg-rose-100 px-2 py-0.5 rounded-full shrink-0">
+                        <XCircle className="w-3.5 h-3.5" /> Incorrect
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="text-xs space-y-1 text-slate-700">
+                    <div>
+                      <span className="text-slate-500">Your Answer: </span>
+                      <strong className={isCorrect ? 'text-emerald-700' : 'text-rose-700'}>
+                        {userAns || 'Not Answered'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Correct Answer: </span>
+                      <strong className="text-emerald-700">{q.correct_answer}</strong>
+                    </div>
+                    {q.explanation && (
+                      <div className="text-slate-500 pt-1 text-[11px] italic">
+                        💡 {q.explanation}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-        
-        <button
-          onClick={onBack}
-          className="w-full bg-blue-500 text-white py-3 rounded-lg font-medium hover:bg-blue-600 transition-colors"
-        >
-          Back to Tests
-        </button>
-      </div>
+      )}
     </motion.div>
   );
-};
-
-export default CRTModules; 
+}

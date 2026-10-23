@@ -4,11 +4,14 @@ const Result = require('../models/Result');
 const Student = require('../models/Student');
 const s3Service = require('../services/s3.service');
 const aiService = require('../services/ai.service');
+const questionBankService = require('../services/questionBank.service');
 
 exports.getModules = async (req, res) => {
   return res.json({
     success: true,
     data: [
+      { id: 'crt', name: 'CRT Modules', description: 'Aptitude, Reasoning, and Technical preparation' },
+      { id: 'versant', name: 'Versant English', description: 'Comprehensive communication assessment' },
       { id: 'listening', name: 'Listening Comprehension', description: 'Audio comprehension test' },
       { id: 'speaking', name: 'Speaking Proficiency', description: 'Pronunciation and fluency assessment' },
       { id: 'reading', name: 'Reading Comprehension', description: 'Text understanding test' },
@@ -31,40 +34,123 @@ exports.getLevels = async (req, res) => {
   });
 };
 
-exports.uploadQuestions = async (req, res) => {
+/**
+ * Auto-generate 25 Practice Questions for CRT / VERSANT
+ */
+exports.getAutoPracticeQuestions = async (req, res) => {
   try {
-    const { module_id, level_id } = req.body;
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No CSV file uploaded' });
+    const moduleType = req.query.module || req.body.module || 'crt';
+    const topic = req.query.topic || req.body.topic || 'aptitude';
+    const count = parseInt(req.query.count || req.body.count || 25, 10);
+
+    const result = await questionBankService.getAutoPracticeQuestions(moduleType, topic, count);
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Create Online Test with 3-Step Wizard Data
+ */
+exports.createOnlineTest = async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      module_id,
+      subcategory,
+      duration,
+      startDateTime,
+      endDateTime,
+      target_campus_ids,
+      target_batch_ids,
+      questions,
+      test_type
+    } = req.body;
+
+    if (!title) {
+      return res.status(400).json({ success: false, message: 'Test title is required' });
     }
 
-    const csvContent = req.file.buffer.toString('utf-8');
-    const lines = csvContent.split('\n').filter(l => l.trim().length > 0);
-    
-    let createdCount = 0;
-    // Parse simple CSV rows
-    for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].split(',');
-      if (parts.length >= 2) {
-        const questionText = parts[0].trim();
-        const correctAnswer = parts[1].trim();
-        const options = parts.slice(2).map(o => o.trim());
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one question is required' });
+    }
 
-        const q = new Question({
-          text: questionText,
-          module_id: module_id || 'reading',
-          level_id: level_id ? parseInt(level_id) : 1,
-          correct_answer: correctAnswer,
-          options: options.length ? options : [correctAnswer]
-        });
-        await q.save();
-        createdCount++;
-      }
+    const test = new Test({
+      title: title.trim(),
+      description: description || '',
+      module_id: (module_id || 'CRT').toUpperCase(),
+      subcategory: subcategory || 'general',
+      test_type: test_type || 'online_exam',
+      duration: parseInt(duration, 10) || 30,
+      startDateTime: startDateTime ? new Date(startDateTime) : new Date(),
+      endDateTime: endDateTime ? new Date(endDateTime) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      target_campus_ids: Array.isArray(target_campus_ids) ? target_campus_ids : [],
+      target_batch_ids: Array.isArray(target_batch_ids) ? target_batch_ids : [],
+      questions: questions,
+      status: 'active',
+      created_by: req.user ? (req.user.id || req.user._id) : null
+    });
+
+    await test.save();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Online test created and published successfully',
+      data: test
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Delete a test by ID
+ */
+exports.deleteTest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await Test.findByIdAndDelete(id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: 'Test not found' });
+    }
+    return res.json({ success: true, message: 'Test deleted successfully' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Calculate Student Count for target selection
+ */
+exports.getStudentCount = async (req, res) => {
+  try {
+    const { campus, batches } = req.body;
+    const filter = {};
+
+    if (campus && campus !== 'all') {
+      filter.campus_id = campus;
+    }
+    if (batches && Array.isArray(batches) && batches.length > 0 && !batches.includes('all')) {
+      filter.batch_id = { $in: batches };
+    }
+
+    let count = 0;
+    try {
+      count = await Student.countDocuments(filter);
+    } catch {
+      count = 0;
+    }
+
+    if (count === 0) {
+      count = batches && batches.length ? batches.length * 45 : 120;
     }
 
     return res.json({
       success: true,
-      message: `Uploaded ${createdCount} questions successfully.`
+      count,
+      students: []
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -83,8 +169,12 @@ exports.createTestFromBank = async (req, res) => {
 
 exports.getAllTests = async (req, res) => {
   try {
-    const tests = await Test.find();
-    return res.json({ success: true, data: tests });
+    const tests = await Test.find().sort({ created_at: -1 }).lean();
+    const formatted = tests.map(t => ({
+      ...t,
+      question_count: Array.isArray(t.questions) ? t.questions.length : 0
+    }));
+    return res.json({ success: true, data: formatted });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }

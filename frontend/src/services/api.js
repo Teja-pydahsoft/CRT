@@ -382,6 +382,20 @@ export const createTestFromBank = async (testData) => {
   return api.post('/test-management/create-test-from-bank', testData);
 };
 
+export const createOnlineTest = async (testData) => {
+  return api.post('/test-management/create-online-test', testData);
+};
+
+export const deleteTest = async (testId) => {
+  return api.delete(`/test-management/tests/${testId}`);
+};
+
+export const getAutoPracticeQuestions = async (module, topic, count = 25) => {
+  return api.get('/test-management/auto-practice-questions', {
+    params: { module, topic, count }
+  });
+};
+
 export const getAllTests = async () => api.get('/test-management/tests');
 
 // Returns { count, students: [ ... ] }

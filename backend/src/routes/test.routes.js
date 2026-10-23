@@ -9,7 +9,14 @@ router.use(authenticateToken);
 router.get('/modules', testController.getModules);
 router.get('/levels', testController.getLevels);
 router.get('/tests', testController.getAllTests);
+router.delete('/tests/:id', testController.deleteTest);
 router.get('/questions', testController.getQuestions);
+
+// Auto practice questions (25 questions) & Online Test creation
+router.get('/auto-practice-questions', testController.getAutoPracticeQuestions);
+router.post('/auto-practice-questions', testController.getAutoPracticeQuestions);
+router.post('/create-online-test', testController.createOnlineTest);
+router.post('/student-count', testController.getStudentCount);
 
 router.post('/upload-questions', upload.single('file'), testController.uploadQuestions);
 router.post('/create-test-from-bank', testController.createTestFromBank);
