@@ -6,6 +6,7 @@ const User = require('../models/User');
 const emailService = require('../services/email.service');
 const papaparse = require('papaparse');
 const xlsx = require('xlsx');
+const sdmsService = require('../services/sdms.service');
 
 exports.getBatches = async (req, res) => {
   try {
@@ -83,11 +84,16 @@ exports.validateStudentUpload = async (req, res) => {
       parsedStudents = results.data;
     }
 
+    // Validate students against actual SDMS College, Course, Branch, Year, and Semester
+    const validationResult = await sdmsService.validateStudentUpload(parsedStudents);
+
     return res.json({
       success: true,
-      totalCount: parsedStudents.length,
-      validStudents: parsedStudents,
-      invalidStudents: []
+      totalCount: validationResult.totalCount,
+      validCount: validationResult.validCount,
+      invalidCount: validationResult.invalidCount,
+      validStudents: validationResult.validStudents,
+      invalidStudents: validationResult.invalidStudents
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -131,10 +137,33 @@ exports.uploadStudentsToBatch = async (req, res) => {
           email,
           name,
           campus_id,
-          batch_id
+          batch_id,
+          college_id: item.college_id || null,
+          college_name: item.college_name || '',
+          course_id: item.course_id || null,
+          course_name: item.course_name || '',
+          branch_id: item.branch_id || null,
+          branch_name: item.branch_name || '',
+          year: item.current_year || item.year || 1,
+          semester: item.current_semester || item.semester || 1,
+          section: item.section || 'A',
+          mobile_number: item.mobile_number || ''
         });
         await student.save();
         createdCount++;
+      } else {
+        // Update academic metadata if available
+        student.college_id = item.college_id || student.college_id;
+        student.college_name = item.college_name || student.college_name;
+        student.course_id = item.course_id || student.course_id;
+        student.course_name = item.course_name || student.course_name;
+        student.branch_id = item.branch_id || student.branch_id;
+        student.branch_name = item.branch_name || student.branch_name;
+        student.year = item.current_year || item.year || student.year;
+        student.semester = item.current_semester || item.semester || student.semester;
+        student.section = item.section || student.section;
+        student.mobile_number = item.mobile_number || student.mobile_number;
+        await student.save();
       }
     }
 

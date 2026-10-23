@@ -858,7 +858,7 @@ const StudentManagement = () => {
                                 {/* 4. Year */}
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-700 mb-1">
-                                        Year
+                                        Academic Year
                                     </label>
                                     <select
                                         value={selectedYear}
@@ -866,11 +866,14 @@ const StudentManagement = () => {
                                         className="w-full py-1.5 px-2 text-xs sm:text-sm border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                                     >
                                         <option value="">All Years</option>
-                                        {years.map(y => (
-                                            <option key={y} value={y}>
-                                                Year {y}
-                                            </option>
-                                        ))}
+                                        {years.map(y => {
+                                            const courseObj = courses.find(c => String(c.id) === String(selectedCourse));
+                                            return (
+                                                <option key={y} value={y}>
+                                                    Year {y}{courseObj?.total_years ? ` (of ${courseObj.total_years})` : ''}
+                                                </option>
+                                            );
+                                        })}
                                     </select>
                                 </div>
 
@@ -890,7 +893,7 @@ const StudentManagement = () => {
                                         </option>
                                         {semesters.map(s => (
                                             <option key={s} value={s}>
-                                                Sem {s}
+                                                {selectedYear ? `${selectedYear}-${s} (Sem ${s})` : `Sem ${s}`}
                                             </option>
                                         ))}
                                     </select>
@@ -1182,11 +1185,11 @@ const StudentManagement = () => {
                                                         </td>
                                                         <td className="px-2 sm:px-3 md:px-6 lg:px-8 py-3 md:py-4 whitespace-nowrap text-xs sm:text-sm">
                                                             <div className="flex items-center gap-1.5 flex-wrap">
-                                                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
-                                                                    {student.year ? `Y${student.year}` : 'Y-'}
+                                                                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                                                                    {student.year ? `Year ${student.year}` : 'Year -'}
                                                                 </span>
-                                                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                                                                    {student.semester ? `S${student.semester}` : 'S-'}
+                                                                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                                                    {student.year && student.semester ? `${student.year}-${student.semester}` : student.semester ? `Sem ${student.semester}` : 'Sem -'}
                                                                 </span>
                                                                 <span className="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                                                     {student.section ? `Sec ${student.section}` : 'Sec -'}

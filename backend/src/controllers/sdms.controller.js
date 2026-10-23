@@ -226,3 +226,54 @@ exports.exportSingleStudentCsv = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+/**
+ * Get institutional academic validation rules (Colleges, Courses with durations, Branches, Semesters)
+ */
+exports.getAcademicValidationRules = async (req, res) => {
+  try {
+    const rules = await sdmsService.getAcademicValidationRules();
+    return res.json({
+      success: true,
+      source: 'rds',
+      data: rules
+    });
+  } catch (error) {
+    console.error('SDMS getAcademicValidationRules Error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Validate a single student payload against RDS academic rules
+ */
+exports.validateStudent = async (req, res) => {
+  try {
+    const studentData = req.body || {};
+    const result = await sdmsService.validateStudentData(studentData);
+    return res.json({
+      success: true,
+      isValid: result.isValid,
+      errors: result.errors,
+      data: result.normalizedData
+    });
+  } catch (error) {
+    console.error('SDMS validateStudent Error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Bulk validate student rows
+ */
+exports.validateStudentsBulk = async (req, res) => {
+  try {
+    const students = Array.isArray(req.body) ? req.body : (req.body.students || []);
+    const result = await sdmsService.validateStudentUpload(students);
+    return res.json(result);
+  } catch (error) {
+    console.error('SDMS validateStudentsBulk Error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+

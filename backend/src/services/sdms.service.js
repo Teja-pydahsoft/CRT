@@ -4,6 +4,8 @@ const env = require('../config/env');
 class SDMSService {
   constructor() {
     this.pool = null;
+    this.catalogCache = null;
+    this.catalogCacheTime = 0;
   }
 
   getPool() {
@@ -88,85 +90,52 @@ class SDMSService {
   }
 
   /**
-   * Fetch available academic years (1, 2, 3, 4, etc.)
+   * Fetch available academic years (1, 2, 3, 4, etc.) strictly bounded by course total_years
    */
   async getYears(collegeId, courseId, branchId) {
     const pool = this.getPool();
     
     // Check if course has total_years defined
-    let defaultYears = [];
     if (courseId) {
-      const [courses] = await pool.query('SELECT total_years FROM courses WHERE id = ?', [Number(courseId)]);
-      if (courses.length > 0 && courses[0].total_years) {
-        const total = Number(courses[0].total_years);
-        defaultYears = Array.from({ length: total }, (_, i) => i + 1);
+      try {
+        const [courses] = await pool.query('SELECT total_years FROM courses WHERE id = ?', [Number(courseId)]);
+        if (courses.length > 0 && courses[0].total_years) {
+          const total = Number(courses[0].total_years);
+          return Array.from({ length: total }, (_, i) => i + 1);
+        }
+      } catch (err) {
+        console.warn('Error fetching course total_years:', err.message);
       }
     }
 
-    // Also get distinct current_year from students (Regular students only)
-    let query = "SELECT DISTINCT current_year as year FROM students WHERE current_year IS NOT NULL AND current_year > 0 AND student_status = 'Regular'";
-    const params = [];
+    try {
+      let query = "SELECT DISTINCT current_year as year FROM students WHERE current_year IS NOT NULL AND current_year > 0 AND (student_status = 'Regular' OR LOWER(student_status) = 'regular' OR student_status IS NULL)";
+      const params = [];
 
-    if (collegeId) {
-      query += ' AND college_id = ?';
-      params.push(Number(collegeId));
-    }
-    if (courseId) {
-      query += ' AND course_id = ?';
-      params.push(Number(courseId));
-    }
-    if (branchId) {
-      query += ' AND branch_id = ?';
-      params.push(Number(branchId));
-    }
-    query += ' ORDER BY year ASC';
+      if (collegeId) {
+        query += ' AND college_id = ?';
+        params.push(Number(collegeId));
+      }
+      if (branchId) {
+        query += ' AND branch_id = ?';
+        params.push(Number(branchId));
+      }
+      query += ' ORDER BY year ASC';
 
-    const [rows] = await pool.query(query, params);
-    const dbYears = rows.map(r => Number(r.year)).filter(Boolean);
-
-    // Merge and deduplicate
-    const combined = Array.from(new Set([...defaultYears, ...dbYears])).sort((a, b) => a - b);
-    return combined.length > 0 ? combined : [1, 2, 3, 4];
+      const [rows] = await pool.query(query, params);
+      const dbYears = rows.map(r => Number(r.year)).filter(y => y >= 1 && y <= 6);
+      return dbYears.length > 0 ? dbYears : [1, 2, 3, 4];
+    } catch {
+      return [1, 2, 3, 4];
+    }
   }
 
   /**
-   * Fetch available semesters (1, 2 or 1 through 8)
+   * Fetch available semesters (1 and 2 per academic year)
    */
   async getSemesters(collegeId, courseId, branchId, year) {
-    const pool = this.getPool();
-    let query = "SELECT DISTINCT current_semester as semester FROM students WHERE current_semester IS NOT NULL AND current_semester > 0 AND student_status = 'Regular'";
-    const params = [];
-
-    if (collegeId) {
-      query += ' AND college_id = ?';
-      params.push(Number(collegeId));
-    }
-    if (courseId) {
-      query += ' AND course_id = ?';
-      params.push(Number(courseId));
-    }
-    if (branchId) {
-      query += ' AND branch_id = ?';
-      params.push(Number(branchId));
-    }
-    if (year) {
-      query += ' AND current_year = ?';
-      params.push(Number(year));
-    }
-    query += ' ORDER BY semester ASC';
-
-    const [rows] = await pool.query(query, params);
-    const dbSems = rows.map(r => Number(r.semester)).filter(Boolean);
-
-    if (year) {
-      const y = Number(year);
-      // Both numbering schemes: relative (1, 2) or cumulative (e.g. year 2 -> 3, 4)
-      const expected = [1, 2, (y * 2) - 1, y * 2];
-      const merged = Array.from(new Set([...dbSems, ...expected])).sort((a, b) => a - b);
-      return merged;
-    }
-
-    return dbSems.length > 0 ? dbSems : [1, 2, 3, 4, 5, 6, 7, 8];
+    // In SDMS RDS, current_semester is stored as 1 or 2 per academic year
+    return [1, 2];
   }
 
   /**
@@ -177,7 +146,7 @@ class SDMSService {
     let query = `
       SELECT DISTINCT s.section
       FROM students s
-      WHERE s.section IS NOT NULL AND CHAR_LENGTH(s.section) > 0 AND s.student_status = 'Regular'
+      WHERE s.section IS NOT NULL AND CHAR_LENGTH(s.section) > 0 AND (s.student_status = 'Regular' OR LOWER(s.student_status) = 'regular' OR s.student_status IS NULL)
     `;
     const params = [];
 
@@ -198,20 +167,510 @@ class SDMSService {
       params.push(Number(year));
     }
     if (semester) {
+      const semNum = Number(semester);
+      const normalizedSem = (semNum > 2 && year) ? (((semNum - 1) % 2) + 1) : semNum;
       query += ' AND s.current_semester = ?';
-      params.push(Number(semester));
+      params.push(normalizedSem);
     }
 
     query += ' ORDER BY s.section ASC';
 
-    const [rows] = await pool.query(query, params);
-    const sections = rows.map(r => r.section).filter(Boolean);
-
-    // Provide standard sections if none in database for the given combo
-    if (sections.length === 0) {
+    try {
+      const [rows] = await pool.query(query, params);
+      const sections = rows.map(r => r.section).filter(Boolean);
+      return sections.length > 0 ? sections : ['A', 'B', 'C', 'D'];
+    } catch {
       return ['A', 'B', 'C', 'D'];
     }
-    return sections;
+  }
+
+  /**
+   * Fetch and cache active colleges, courses, and branches
+   */
+  async getAcademicCatalog() {
+    const now = Date.now();
+    if (this.catalogCache && (now - this.catalogCacheTime < 300000)) {
+      return this.catalogCache;
+    }
+
+    const pool = this.getPool();
+    const [colleges] = await pool.query(
+      'SELECT id, name, code FROM colleges WHERE is_active = 1 ORDER BY id ASC'
+    );
+    const [courses] = await pool.query(
+      'SELECT id, college_id, name, code, total_years, semesters_per_year FROM courses WHERE is_active = 1 ORDER BY id ASC'
+    );
+    const [branches] = await pool.query(
+      'SELECT id, course_id, name, code FROM course_branches WHERE is_active = 1 ORDER BY id ASC'
+    );
+
+    const collegesById = new Map();
+    const collegesByCode = new Map();
+    const collegesByName = new Map();
+    for (const c of colleges) {
+      collegesById.set(Number(c.id), c);
+      if (c.code) collegesByCode.set(c.code.trim().toUpperCase(), c);
+      if (c.name) collegesByName.set(c.name.trim().toLowerCase(), c);
+    }
+
+    const coursesById = new Map();
+    const coursesByCode = new Map();
+    const coursesByName = new Map();
+    const coursesByCollegeAndCode = new Map();
+    const coursesByCollegeAndName = new Map();
+    for (const cou of courses) {
+      coursesById.set(Number(cou.id), cou);
+      if (cou.code) {
+        const cCode = cou.code.trim().toUpperCase();
+        coursesByCode.set(cCode, cou);
+        coursesByCollegeAndCode.set(`${cou.college_id}:${cCode}`, cou);
+      }
+      if (cou.name) {
+        const cName = cou.name.trim().toLowerCase();
+        coursesByName.set(cName, cou);
+        coursesByCollegeAndName.set(`${cou.college_id}:${cName}`, cou);
+      }
+    }
+
+    const branchesById = new Map();
+    const branchesByCode = new Map();
+    const branchesByName = new Map();
+    const branchesByCourseAndCode = new Map();
+    const branchesByCourseAndName = new Map();
+    for (const b of branches) {
+      branchesById.set(Number(b.id), b);
+      if (b.code) {
+        const bCode = b.code.trim().toUpperCase();
+        branchesByCode.set(bCode, b);
+        branchesByCourseAndCode.set(`${b.course_id}:${bCode}`, b);
+      }
+      if (b.name) {
+        const bName = b.name.trim().toLowerCase();
+        branchesByName.set(bName, b);
+        branchesByCourseAndName.set(`${b.course_id}:${bName}`, b);
+      }
+    }
+
+    this.catalogCache = {
+      colleges,
+      courses,
+      branches,
+      collegesById,
+      collegesByCode,
+      collegesByName,
+      coursesById,
+      coursesByCode,
+      coursesByName,
+      coursesByCollegeAndCode,
+      coursesByCollegeAndName,
+      branchesById,
+      branchesByCode,
+      branchesByName,
+      branchesByCourseAndCode,
+      branchesByCourseAndName
+    };
+    this.catalogCacheTime = now;
+    return this.catalogCache;
+  }
+
+  /**
+   * Return complete academic validation rules hierarchy
+   */
+  async getAcademicValidationRules() {
+    const catalog = await this.getAcademicCatalog();
+
+    const collegeRules = catalog.colleges.map(col => {
+      const colCourses = catalog.courses
+        .filter(c => Number(c.college_id) === Number(col.id))
+        .map(c => {
+          const courseBranches = catalog.branches.filter(b => Number(b.course_id) === Number(c.id));
+          const totalYears = Number(c.total_years) || 4;
+          const semestersPerYear = Number(c.semesters_per_year) || 2;
+          const maxSemesters = totalYears * semestersPerYear;
+
+          const yearStructure = Array.from({ length: totalYears }, (_, i) => {
+            const yr = i + 1;
+            return {
+              year: yr,
+              relative_semesters: [1, 2],
+              cumulative_semesters: [(yr - 1) * 2 + 1, yr * 2],
+              semester_labels: [`${yr}-1`, `${yr}-2`]
+            };
+          });
+
+          return {
+            id: c.id,
+            name: c.name,
+            code: c.code,
+            total_years: totalYears,
+            semesters_per_year: semestersPerYear,
+            max_semesters: maxSemesters,
+            valid_years: Array.from({ length: totalYears }, (_, i) => i + 1),
+            year_structure: yearStructure,
+            branches: courseBranches.map(b => ({
+              id: b.id,
+              name: b.name,
+              code: b.code
+            }))
+          };
+        });
+
+      return {
+        id: col.id,
+        name: col.name,
+        code: col.code,
+        courses: colCourses
+      };
+    });
+
+    return {
+      institution: 'Pydah Educational Academy',
+      general_rules: {
+        semesters_per_year: 2,
+        max_duration_years: 6,
+        max_duration_semesters: 12,
+        valid_sections: ['A', 'B', 'C', 'D'],
+        roll_number_format: '3-30 characters alphanumeric',
+        mobile_format: '10 digits'
+      },
+      colleges: collegeRules
+    };
+  }
+
+  /**
+   * Helper: Parse Academic Year from multiple representations (number, roman numeral, string)
+   */
+  parseAcademicYear(raw) {
+    if (raw === null || raw === undefined || raw === '') return null;
+    const str = String(raw).trim().toUpperCase();
+    if (str === 'I' || str === '1ST' || str === '1ST YEAR') return 1;
+    if (str === 'II' || str === '2ND' || str === '2ND YEAR') return 2;
+    if (str === 'III' || str === '3RD' || str === '3RD YEAR') return 3;
+    if (str === 'IV' || str === '4TH' || str === '4TH YEAR') return 4;
+    if (str === 'V' || str === '5TH' || str === '5TH YEAR') return 5;
+    if (str === 'VI' || str === '6TH' || str === '6TH YEAR') return 6;
+    const match = str.match(/\d+/);
+    return match ? parseInt(match[0], 10) : NaN;
+  }
+
+  /**
+   * Helper: Parse Academic Semester from multiple representations ('1', '2', '2-1', 'Sem 1', etc.)
+   */
+  parseAcademicSemester(raw) {
+    if (raw === null || raw === undefined || raw === '') return null;
+    const str = String(raw).trim().toUpperCase();
+
+    // Check pattern like "2-1" or "3-2"
+    const dashMatch = str.match(/^([1-6])\s*[-/]\s*([1-2])$/);
+    if (dashMatch) {
+      const yr = parseInt(dashMatch[1], 10);
+      const sem = parseInt(dashMatch[2], 10);
+      return {
+        raw: str,
+        year: yr,
+        relativeSemester: sem,
+        cumulativeSemester: (yr - 1) * 2 + sem,
+        isRelative: true,
+        label: `${yr}-${sem}`
+      };
+    }
+
+    if (str === 'I' || str === 'SEM 1' || str === 'SEMESTER 1' || str === '1ST SEM') {
+      return { raw: str, relativeSemester: 1, cumulativeSemester: 1, isRelative: true, label: 'Sem 1' };
+    }
+    if (str === 'II' || str === 'SEM 2' || str === 'SEMESTER 2' || str === '2ND SEM') {
+      return { raw: str, relativeSemester: 2, cumulativeSemester: 2, isRelative: true, label: 'Sem 2' };
+    }
+
+    const numMatch = str.match(/\d+/);
+    if (numMatch) {
+      const num = parseInt(numMatch[0], 10);
+      return {
+        raw: str,
+        number: num,
+        isRelative: num <= 2,
+        relativeSemester: num <= 2 ? num : ((num - 1) % 2) + 1,
+        cumulativeSemester: num
+      };
+    }
+
+    return { raw: str, number: NaN, isRelative: false };
+  }
+
+  /**
+   * Validate a single student record against actual SDMS College, Course, Branch, Year, and Semesters
+   */
+  async validateStudentData(student, preloadedCatalog = null) {
+    const catalog = preloadedCatalog || await this.getAcademicCatalog();
+    const errors = [];
+
+    // 1. Mandatory Identity Validations
+    const rawRoll = student.roll_number || student.pin_no || student.student_id || student.admission_number || student.pin || '';
+    const rollNumber = String(rawRoll).trim().toUpperCase();
+
+    const rawName = student.name || student.student_name || student.full_name || '';
+    const studentName = String(rawName).trim();
+
+    const rawEmail = student.email || student.student_email || '';
+    const email = String(rawEmail).trim();
+
+    const rawMobile = student.mobile_number || student.student_mobile || student.phone || student.mobile || '';
+    const mobile = String(rawMobile).trim();
+
+    if (!rollNumber) {
+      errors.push('Roll Number / PIN number is required');
+    } else if (rollNumber.length < 3 || rollNumber.length > 30) {
+      errors.push(`Roll Number must be between 3 and 30 characters (got "${rollNumber}")`);
+    }
+
+    if (!studentName) {
+      errors.push('Student Name is required');
+    } else if (studentName.length < 2) {
+      errors.push(`Student Name must be at least 2 characters (got "${studentName}")`);
+    }
+
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.push(`Invalid email format: "${email}"`);
+    }
+
+    const cleanMobile = mobile.replace(/\D/g, '');
+    if (mobile && cleanMobile.length !== 10) {
+      errors.push(`Mobile number must be exactly 10 digits (got "${mobile}")`);
+    }
+
+    // 2. College Resolution & Validation
+    const rawCollege = student.college_id ?? student.college ?? student.college_name ?? student.college_code ?? student.campus_id ?? student.campus ?? null;
+    let resolvedCollege = null;
+
+    if (rawCollege !== null && rawCollege !== '') {
+      const colNum = Number(rawCollege);
+      if (!isNaN(colNum) && catalog.collegesById.has(colNum)) {
+        resolvedCollege = catalog.collegesById.get(colNum);
+      } else {
+        const colStr = String(rawCollege).trim();
+        const upper = colStr.toUpperCase();
+        const lower = colStr.toLowerCase();
+        resolvedCollege = catalog.collegesByCode.get(upper) ||
+                          catalog.collegesByName.get(lower) ||
+                          catalog.colleges.find(c => c.name.toLowerCase().includes(lower) || (c.code && c.code.toUpperCase().includes(upper)));
+      }
+
+      if (!resolvedCollege) {
+        errors.push(`College "${rawCollege}" is not an active institution college`);
+      }
+    }
+
+    // 3. Course Resolution & Validation
+    const rawCourse = student.course_id ?? student.course ?? student.course_name ?? student.course_code ?? null;
+    let resolvedCourse = null;
+
+    if (rawCourse !== null && rawCourse !== '') {
+      const couNum = Number(rawCourse);
+      if (!isNaN(couNum) && catalog.coursesById.has(couNum)) {
+        resolvedCourse = catalog.coursesById.get(couNum);
+      } else {
+        const couStr = String(rawCourse).trim();
+        const upper = couStr.toUpperCase();
+        const lower = couStr.toLowerCase();
+
+        // If college is already known, check courses for that college first
+        if (resolvedCollege) {
+          resolvedCourse = catalog.coursesByCollegeAndCode.get(`${resolvedCollege.id}:${upper}`) ||
+                           catalog.coursesByCollegeAndName.get(`${resolvedCollege.id}:${lower}`) ||
+                           catalog.courses.find(c => Number(c.college_id) === Number(resolvedCollege.id) &&
+                             (c.name.toLowerCase().includes(lower) || (c.code && c.code.toUpperCase().includes(upper))));
+        }
+
+        if (!resolvedCourse) {
+          resolvedCourse = catalog.coursesByCode.get(upper) ||
+                           catalog.coursesByName.get(lower) ||
+                           catalog.courses.find(c => c.name.toLowerCase().includes(lower) || (c.code && c.code.toUpperCase().includes(upper)));
+        }
+      }
+
+      if (!resolvedCourse) {
+        errors.push(`Course "${rawCourse}" is not an active course in academic catalog`);
+      } else if (resolvedCollege && Number(resolvedCourse.college_id) !== Number(resolvedCollege.id)) {
+        const actualCollege = catalog.collegesById.get(Number(resolvedCourse.college_id));
+        errors.push(`Course "${resolvedCourse.name}" belongs to "${actualCollege?.name || 'another college'}" (${actualCollege?.code || ''}), not "${resolvedCollege.name}"`);
+      }
+    }
+
+    // If College was not given but Course was found, auto-fill College!
+    if (!resolvedCollege && resolvedCourse) {
+      resolvedCollege = catalog.collegesById.get(Number(resolvedCourse.college_id)) || null;
+    }
+
+    // 4. Branch Resolution & Validation
+    const rawBranch = student.branch_id ?? student.branch ?? student.branch_name ?? student.branch_code ?? null;
+    let resolvedBranch = null;
+
+    if (rawBranch !== null && rawBranch !== '') {
+      const brNum = Number(rawBranch);
+      if (!isNaN(brNum) && catalog.branchesById.has(brNum)) {
+        resolvedBranch = catalog.branchesById.get(brNum);
+      } else {
+        const brStr = String(rawBranch).trim();
+        const upper = brStr.toUpperCase();
+        const lower = brStr.toLowerCase();
+
+        // If course is resolved, check branches for that course first
+        if (resolvedCourse) {
+          resolvedBranch = catalog.branchesByCourseAndCode.get(`${resolvedCourse.id}:${upper}`) ||
+                           catalog.branchesByCourseAndName.get(`${resolvedCourse.id}:${lower}`) ||
+                           catalog.branches.find(b => Number(b.course_id) === Number(resolvedCourse.id) &&
+                             (b.name.toLowerCase().includes(lower) || (b.code && b.code.toUpperCase().includes(upper))));
+        }
+
+        if (!resolvedBranch) {
+          resolvedBranch = catalog.branchesByCode.get(upper) ||
+                           catalog.branchesByName.get(lower) ||
+                           catalog.branches.find(b => b.name.toLowerCase().includes(lower) || (b.code && b.code.toUpperCase().includes(upper)));
+        }
+      }
+
+      if (resolvedBranch && resolvedCourse && Number(resolvedBranch.course_id) !== Number(resolvedCourse.id)) {
+        errors.push(`Branch "${resolvedBranch.name}" does not belong to course "${resolvedCourse.name}"`);
+      }
+    }
+
+    // 5. Academic Year Validation
+    const rawYear = student.current_year ?? student.year ?? student.academic_year ?? null;
+    let parsedYear = this.parseAcademicYear(rawYear);
+
+    // 6. Semester Resolution & Validation
+    const rawSemester = student.current_semester ?? student.semester ?? student.sem ?? null;
+    const parsedSemObj = this.parseAcademicSemester(rawSemester);
+
+    // If semester had embedded year (e.g. "2-1"):
+    if (parsedSemObj && parsedSemObj.year) {
+      if (parsedYear !== null && parsedYear !== parsedSemObj.year) {
+        errors.push(`Semester "${parsedSemObj.raw}" implies Academic Year ${parsedSemObj.year}, but Year was set to ${parsedYear}`);
+      } else if (parsedYear === null) {
+        parsedYear = parsedSemObj.year;
+      }
+    }
+
+    // Check Year boundaries against Course
+    const courseTotalYears = resolvedCourse ? Number(resolvedCourse.total_years) : 4;
+    const maxCourseSemesters = courseTotalYears * (resolvedCourse ? Number(resolvedCourse.semesters_per_year) || 2 : 2);
+
+    if (parsedYear !== null) {
+      if (isNaN(parsedYear) || parsedYear < 1) {
+        errors.push(`Academic Year must be a positive integer (got "${rawYear}")`);
+      } else if (parsedYear > courseTotalYears) {
+        errors.push(`Academic Year ${parsedYear} exceeds maximum duration of ${courseTotalYears} years for ${resolvedCourse ? resolvedCourse.name : 'this course'}`);
+      }
+    }
+
+    // Validate Semester numbers
+    let finalRelativeSemester = 1;
+    let finalCumulativeSemester = 1;
+
+    if (parsedSemObj) {
+      if (parsedSemObj.number !== undefined && (isNaN(parsedSemObj.number) || parsedSemObj.number < 1)) {
+        errors.push(`Semester must be a positive integer (got "${rawSemester}")`);
+      } else {
+        const semVal = parsedSemObj.number || parsedSemObj.relativeSemester;
+
+        if (semVal > maxCourseSemesters) {
+          errors.push(`Semester ${semVal} exceeds total course duration of ${maxCourseSemesters} semesters for ${resolvedCourse ? resolvedCourse.name : 'this course'}`);
+        } else if (semVal > 2) {
+          // Cumulative semester (e.g. 3, 4, 5, 6, 7, 8)
+          const expectedYear = Math.ceil(semVal / 2);
+          if (parsedYear !== null && parsedYear !== expectedYear) {
+            errors.push(`Cumulative Semester ${semVal} belongs to Academic Year ${expectedYear}, not Year ${parsedYear}`);
+          } else if (parsedYear === null) {
+            parsedYear = expectedYear;
+          }
+          finalCumulativeSemester = semVal;
+          finalRelativeSemester = ((semVal - 1) % 2) + 1;
+        } else {
+          // Relative semester (1 or 2)
+          finalRelativeSemester = semVal;
+          finalCumulativeSemester = parsedYear ? (parsedYear - 1) * 2 + semVal : semVal;
+        }
+      }
+    } else {
+      finalRelativeSemester = 1;
+      finalCumulativeSemester = parsedYear ? (parsedYear - 1) * 2 + 1 : 1;
+    }
+
+    // 7. Section Validation
+    const rawSection = student.section ?? student.sec ?? 'A';
+    const cleanSection = String(rawSection).trim().toUpperCase();
+    const finalSection = cleanSection ? cleanSection.slice(0, 5) : 'A';
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      normalizedData: {
+        roll_number: rollNumber,
+        student_name: studentName,
+        email: email || `${rollNumber}@pydah.edu.in`,
+        mobile_number: cleanMobile,
+        college_id: resolvedCollege?.id || null,
+        college_name: resolvedCollege?.name || '',
+        college_code: resolvedCollege?.code || '',
+        course_id: resolvedCourse?.id || null,
+        course_name: resolvedCourse?.name || '',
+        course_code: resolvedCourse?.code || '',
+        branch_id: resolvedBranch?.id || null,
+        branch_name: resolvedBranch?.name || '',
+        branch_code: resolvedBranch?.code || '',
+        current_year: parsedYear || 1,
+        current_semester: finalRelativeSemester,
+        relative_semester: finalRelativeSemester,
+        cumulative_semester: finalCumulativeSemester,
+        semester_label: parsedYear ? `${parsedYear}-${finalRelativeSemester}` : `Sem ${finalRelativeSemester}`,
+        section: finalSection
+      }
+    };
+  }
+
+  /**
+   * Bulk validate an array of student rows (from CSV/Excel upload)
+   */
+  async validateStudentUpload(studentsArray) {
+    if (!Array.isArray(studentsArray)) {
+      throw new Error('Students upload must be an array of student records');
+    }
+
+    const catalog = await this.getAcademicCatalog();
+    const validStudents = [];
+    const invalidStudents = [];
+
+    for (let i = 0; i < studentsArray.length; i++) {
+      const row = studentsArray[i];
+      if (!row || Object.keys(row).length === 0) continue;
+
+      const validation = await this.validateStudentData(row, catalog);
+      const rowNumber = i + 2; // Row 1 is header in spreadsheets
+
+      if (validation.isValid) {
+        validStudents.push({
+          row_number: rowNumber,
+          ...validation.normalizedData
+        });
+      } else {
+        invalidStudents.push({
+          row_number: rowNumber,
+          data: row,
+          roll_number: validation.normalizedData.roll_number || 'N/A',
+          student_name: validation.normalizedData.student_name || 'N/A',
+          errors: validation.errors
+        });
+      }
+    }
+
+    return {
+      success: true,
+      totalCount: validStudents.length + invalidStudents.length,
+      validCount: validStudents.length,
+      invalidCount: invalidStudents.length,
+      validStudents,
+      invalidStudents
+    };
   }
 
   /**
@@ -233,8 +692,8 @@ class SDMSService {
     const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 20));
     const offset = (pageNum - 1) * limitNum;
 
-    // Filter ONLY Regular students
-    let whereClause = "WHERE (s.student_status = 'Regular' OR LOWER(s.student_status) = 'regular')";
+    // Filter Regular / Active students
+    let whereClause = "WHERE (s.student_status = 'Regular' OR LOWER(s.student_status) = 'regular' OR s.student_status IS NULL OR s.student_status = 'Active')";
     const params = [];
 
     if (collegeId) {
@@ -254,8 +713,10 @@ class SDMSService {
       params.push(Number(year));
     }
     if (semester) {
+      const sNum = Number(semester);
+      const normalizedSem = (sNum > 2 && year) ? (((sNum - 1) % 2) + 1) : sNum;
       whereClause += ' AND s.current_semester = ?';
-      params.push(Number(semester));
+      params.push(normalizedSem);
     }
     if (section) {
       whereClause += ' AND s.section = ?';

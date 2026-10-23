@@ -500,4 +500,16 @@ export const getSdmsStudents = async (params = {}) => {
   return api.get('/student/sdms/students', { params });
 };
 
-export default api;
+export const getSdmsValidationRules = async () => {
+  return api.get('/student/sdms/validation-rules');
+};
+
+export const validateStudentData = async (studentData) => {
+  return api.post('/student/sdms/validate-student', studentData);
+};
+
+export const validateStudentsBulk = async (students) => {
+  return api.post('/student/sdms/validate-students-bulk', { students });
+};
+
+export default api;

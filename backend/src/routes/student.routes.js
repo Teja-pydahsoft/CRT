@@ -27,5 +27,9 @@ router.get('/sdms/semesters', sdmsController.getSemesters);
 router.get('/sdms/sections', sdmsController.getSections);
 router.get('/sdms/students', sdmsController.getStudents);
 router.get('/sdms/export', sdmsController.exportStudentsCsv);
+router.get('/sdms/validation-rules', sdmsController.getAcademicValidationRules);
+router.post('/sdms/validate-student', sdmsController.validateStudent);
+router.post('/sdms/validate-students-bulk', sdmsController.validateStudentsBulk);
 
 module.exports = router;
+
