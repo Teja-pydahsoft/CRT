@@ -5,8 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import api from '../../services/api'; 
 import { Users, Filter, Search, Trash2, ListChecks, CheckCircle, BookOpen, Lock, Unlock, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, User, MoreVertical, Download, Mail, X } from 'lucide-react';
-import Modal from '../../components/common/Modal';
-import { getStudentAccessStatus, authorizeStudentModule, lockStudentModule, authorizeStudentLevel, lockStudentLevel, getStudentDetailedInsights, bulkMigrateStudentsProgress } from '../../services/api';
+import { getStudentAccessStatus, authorizeStudentModule, lockStudentModule, authorizeStudentLevel, lockStudentLevel, getStudentDetailedInsights } from '../../services/api';
 const CourseStudentManagement = () => {
     const { user, refreshUser } = useAuth();
     const fetchCoursesRef = useRef(false);
@@ -49,7 +48,6 @@ const CourseStudentManagement = () => {
     const [levelPercentages, setLevelPercentages] = useState({}); // { levelId: { practice: %, online: % } }
     const [moduleActionLoading, setModuleActionLoading] = useState({});
     const [levelActionLoading, setLevelActionLoading] = useState({});
-    const [migrationLoading, setMigrationLoading] = useState(false);
     
     // Filter and lazy loading state
   const [currentPage, setCurrentPage] = useState(1);
@@ -532,53 +530,6 @@ const CourseStudentManagement = () => {
         }
     };
 
-    const handleBulkMigration = async () => {
-        if (!window.confirm('Are you sure you want to migrate ALL students to the new progress system? This action cannot be undone.')) {
-            return;
-        }
-        
-        setMigrationLoading(true);
-        
-        try {
-            const response = await bulkMigrateStudentsProgress();
-            
-            if (response.data.success) {
-                console.log('Migration response:', response.data); // Debug log
-                const { 
-                    migrated_count = 0, 
-                    failed_count = 0, 
-                    already_migrated_count = 0, 
-                    total_students_processed = 0 
-                } = response.data;
-                
-                let message = `Migration completed!\n\n`;
-                message += `✅ Migrated: ${migrated_count} students\n`;
-                message += `⚠️ Already migrated: ${already_migrated_count} students\n`;
-                message += `❌ Failed: ${failed_count} students\n`;
-                message += `📊 Total processed: ${total_students_processed} students`;
-                
-                if (failed_count > 0 && response.data.migration_errors) {
-                    message += `\n\nErrors:\n${response.data.migration_errors.slice(0, 3).join('\n')}`;
-                    if (response.data.migration_errors.length > 3) {
-                        message += `\n... and ${response.data.migration_errors.length - 3} more errors`;
-                    }
-                }
-                
-                alert(message);
-                success('Bulk migration completed successfully');
-                
-                // Refresh the student list
-                fetchStudents();
-            } else {
-                error(response.data.message || 'Migration failed');
-            }
-        } catch (error) {
-            console.error('Error during bulk migration:', error);
-            error('Failed to perform bulk migration');
-        } finally {
-            setMigrationLoading(false);
-        }
-    };
 
     // Helper to fetch percentages for all levels in a module
     const fetchLevelPercentages = async (student, module) => {

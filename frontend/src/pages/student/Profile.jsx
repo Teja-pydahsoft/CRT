@@ -5,7 +5,6 @@ import LoadingSpinner from '../../components/common/LoadingSpinner';
 import api from '../../services/api';
 import { User, Mail, Hash, Building, BookOpen, Users, Briefcase, ArrowLeft, Phone, Bell } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import NotificationPreferences from '../../components/common/NotificationPreferences';
 
 const ProfileCard = ({ icon, title, value }) => (
     <motion.div 
@@ -26,7 +25,6 @@ const ProfileCard = ({ icon, title, value }) => (
 const StudentProfile = () => {
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
     const { error } = useNotification();
 
     useEffect(() => {
@@ -103,32 +101,6 @@ const StudentProfile = () => {
                 </div>
             </motion.div>
 
-            {/* Notification Settings Section */}
-            <motion.div 
-                initial={{ opacity: 0, y: 20 }} 
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-                className="mt-6 lg:mt-8"
-            >
-                <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-6 border border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Account Settings</h3>
-                    <div className="flex flex-col sm:flex-row gap-3">
-                        <button 
-                            onClick={() => setShowNotificationPreferences(true)}
-                            className="flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                        >
-                            <Bell className="h-5 w-5 mr-2" />
-                            Notification Settings
-                        </button>
-                    </div>
-                </div>
-            </motion.div>
-            
-            {/* Notification Preferences Modal */}
-            <NotificationPreferences 
-                isOpen={showNotificationPreferences}
-                onClose={() => setShowNotificationPreferences(false)}
-            />
         </div>
     );
 };

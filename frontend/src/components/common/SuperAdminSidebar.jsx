@@ -118,7 +118,6 @@ const SuperAdminSidebar = () => {
         { name: 'Analytics', path: '/superadmin/analytics', icon: BarChart3, module: 'analytics' },
         { name: 'Admin Permissions', path: '/superadmin/admin-permissions', icon: Shield, module: 'admin_permissions' },
         { name: 'Sub Superadmin Management', path: '/superadmin/sub-superadmin', icon: Users, module: 'sub_superadmin_management' },
-        { name: 'Notification Settings', path: '/superadmin/notification-settings', icon: Bell, module: 'notification_settings' },
         { name: 'Global Settings', path: '/superadmin/global-settings', icon: Settings, module: 'global_settings' },
       ]
     }
@@ -142,7 +141,6 @@ const SuperAdminSidebar = () => {
         { name: 'Analytics', path: '/superadmin/analytics', icon: BarChart3, module: 'analytics' },
         { name: 'Admin Permissions', path: '/superadmin/admin-permissions', icon: Shield, module: 'admin_permissions' },
         { name: 'Sub Superadmin Management', path: '/superadmin/sub-superadmin', icon: Users, module: 'sub_superadmin_management' },
-        { name: 'Notification Settings', path: '/superadmin/notification-settings', icon: Bell, module: 'notification_settings' },
         { name: 'Global Settings', path: '/superadmin/global-settings', icon: Settings, module: 'global_settings' },
       ]
 

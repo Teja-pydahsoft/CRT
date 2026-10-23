@@ -33,8 +33,6 @@ import api from '../../services/api';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import AutoReleaseSettingsModal from '../../components/common/AutoReleaseSettingsModal';
-import { autoReleaseSettingsAPI } from '../../services/autoReleaseSettings';
 
 // Test Details View Component
 const TestDetailsView = ({ 
@@ -767,16 +765,11 @@ const ResultsManagement = () => {
     const [studentExportLoading, setStudentExportLoading] = useState(false);
     const [releaseStatus, setReleaseStatus] = useState({}); // Track release status for each test
     const [releaseLoading, setReleaseLoading] = useState({}); // Track loading state for release actions
-    const [migrationLoading, setMigrationLoading] = useState(false); // Track migration loading state
-    const [showAutoReleaseModal, setShowAutoReleaseModal] = useState(false); // Auto-release settings modal
-    const [autoReleaseSettings, setAutoReleaseSettings] = useState(null); // Auto-release settings
-    const [autoReleaseSchedules, setAutoReleaseSchedules] = useState({}); // Auto-release schedules for tests
     const { error, success } = useNotification();
 
     useEffect(() => {
         window.scrollTo(0, 0);
         fetchTests();
-        fetchAutoReleaseSettings();
         fetchFilterData();
     }, []);
 
@@ -1563,42 +1556,6 @@ const ResultsManagement = () => {
         }
     };
 
-    // Auto-release settings functions
-    const fetchAutoReleaseSettings = async () => {
-        try {
-            const response = await autoReleaseSettingsAPI.getSettings();
-            setAutoReleaseSettings(response.settings);
-        } catch (err) {
-            console.error('Error fetching auto-release settings:', err);
-        }
-    };
-
-    const handleSaveAutoReleaseSettings = async (settings) => {
-        try {
-            await autoReleaseSettingsAPI.updateSettings(settings);
-            setAutoReleaseSettings(settings);
-            success('Auto-release settings saved successfully!');
-        } catch (err) {
-            console.error('Error saving auto-release settings:', err);
-            throw err;
-        }
-    };
-
-    // Fetch auto-release schedule for a specific test
-    const fetchAutoReleaseSchedule = async (testId) => {
-        try {
-            const response = await autoReleaseSettingsAPI.getTestSchedule(testId);
-            if (response.schedule) {
-                setAutoReleaseSchedules(prev => ({
-                    ...prev,
-                    [testId]: response.schedule
-                }));
-            }
-        } catch (err) {
-            console.error('Error fetching auto-release schedule:', err);
-        }
-    };
-
     // Export overview table (respecting current filters) to Excel
     const handleExportOverviewToExcel = () => {
         try {
@@ -1670,7 +1627,6 @@ const ResultsManagement = () => {
                             releaseLoading={releaseLoading}
                             onReleaseResults={handleReleaseResults}
                             onUnreleaseResults={handleUnreleaseResults}
-                            autoReleaseSchedule={autoReleaseSchedules[selectedTest?.test_id]}
                         />
                     ) : (
                         <>
@@ -1686,14 +1642,6 @@ const ResultsManagement = () => {
                                 </div>
                                 <div className="flex gap-3">
                                     <button
-                                        onClick={() => setShowAutoReleaseModal(true)}
-                                        className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                                    >
-                                        <Settings className="w-3 h-3 sm:w-4 sm:h-4" />
-                                        <span className="hidden sm:inline">Auto Release Settings</span>
-                                        <span className="sm:hidden">Auto Release</span>
-                                    </button>
-                                    <button
                                         onClick={handleExportOverviewToExcel}
                                         className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                                         disabled={exportLoading}
@@ -1706,18 +1654,6 @@ const ResultsManagement = () => {
                                         <span className="hidden sm:inline">Export Results Abstract</span>
                                         <span className="sm:hidden">Export</span>
                                     </button>
-                                    {/* <button
-                                        onClick={handleMigrateExistingTests}
-                                        disabled={migrationLoading}
-                                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                    >
-                                        {migrationLoading ? (
-                                            <RefreshCw className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <AlertCircle className="w-4 h-4" />
-                                        )}
-                                        {migrationLoading ? 'Migrating...' : 'Migrate Existing Tests'}
-                                    </button> */}
                                 </div>
                             </div>
 
@@ -2267,13 +2203,6 @@ const ResultsManagement = () => {
                 </div>
             )}
 
-            {/* Auto Release Settings Modal */}
-            <AutoReleaseSettingsModal
-                isOpen={showAutoReleaseModal}
-                onClose={() => setShowAutoReleaseModal(false)}
-                onSave={handleSaveAutoReleaseSettings}
-                initialSettings={autoReleaseSettings}
-            />
         </>
     );
 };

@@ -34,8 +34,6 @@ import api from '../../services/api';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import AutoReleaseSettingsModal from '../../components/common/AutoReleaseSettingsModal';
-import { autoReleaseSettingsAPI } from '../../services/autoReleaseSettings';
 
 // Import the same TestDetailsView component structure from CampusReports
 // Test Details View Component
@@ -740,16 +738,12 @@ const CourseReports = () => {
     const [selectedTest, setSelectedTest] = useState(null);
     const [releaseStatus, setReleaseStatus] = useState({});
     const [releaseLoading, setReleaseLoading] = useState({});
-    const [showAutoReleaseModal, setShowAutoReleaseModal] = useState(false);
-    const [autoReleaseSettings, setAutoReleaseSettings] = useState(null);
-    const [autoReleaseSchedules, setAutoReleaseSchedules] = useState({});
     const { error, success } = useNotification();
     const { user } = useAuth();
 
     useEffect(() => {
         window.scrollTo(0, 0);
         fetchTests();
-        fetchAutoReleaseSettings();
         fetchFilterData();
     }, []);
 
@@ -1143,39 +1137,6 @@ const CourseReports = () => {
         }
     }, [tests]);
 
-    const fetchAutoReleaseSettings = async () => {
-        try {
-            const response = await autoReleaseSettingsAPI.getSettings();
-            setAutoReleaseSettings(response.settings);
-        } catch (err) {
-            console.error('Error fetching auto-release settings:', err);
-        }
-    };
-
-    const handleSaveAutoReleaseSettings = async (settings) => {
-        try {
-            await autoReleaseSettingsAPI.updateSettings(settings);
-            setAutoReleaseSettings(settings);
-            success('Auto-release settings saved successfully!');
-        } catch (err) {
-            console.error('Error saving auto-release settings:', err);
-            throw err;
-        }
-    };
-
-    const fetchAutoReleaseSchedule = async (testId) => {
-        try {
-            const response = await autoReleaseSettingsAPI.getTestSchedule(testId);
-            if (response.schedule) {
-                setAutoReleaseSchedules(prev => ({
-                    ...prev,
-                    [testId]: response.schedule
-                }));
-            }
-        } catch (err) {
-            console.error('Error fetching auto-release schedule:', err);
-        }
-    };
 
     if (loading) {
         return (
@@ -1206,7 +1167,6 @@ const CourseReports = () => {
                             releaseLoading={releaseLoading}
                             onReleaseResults={handleReleaseResults}
                             onUnreleaseResults={handleUnreleaseResults}
-                            autoReleaseSchedule={autoReleaseSchedules[selectedTest?.test_id]}
                         />
                     ) : (
                         <>
@@ -1219,15 +1179,6 @@ const CourseReports = () => {
                                     <p className="mt-2 text-sm sm:text-base text-gray-600">
                                         Click on a test to view student attempts and detailed results
                                     </p>
-                                </div>
-                                <div className="flex gap-3">
-                                    <button
-                                        onClick={() => setShowAutoReleaseModal(true)}
-                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm sm:text-base"
-                                    >
-                                        <Settings className="w-4 h-4" />
-                                        Auto Release Settings
-                                    </button>
                                 </div>
                             </div>
 
@@ -1491,17 +1442,6 @@ const CourseReports = () => {
                 </motion.div>
             </main>
 
-            {/* Auto Release Settings Modal */}
-            <AnimatePresence>
-                {showAutoReleaseModal && (
-                    <AutoReleaseSettingsModal
-                        isOpen={showAutoReleaseModal}
-                        onClose={() => setShowAutoReleaseModal(false)}
-                        settings={autoReleaseSettings}
-                        onSave={handleSaveAutoReleaseSettings}
-                    />
-                )}
-            </AnimatePresence>
         </>
     );
 };

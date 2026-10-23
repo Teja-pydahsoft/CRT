@@ -47,7 +47,7 @@ if (!isDevelopment) {
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 500000,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -404,10 +404,6 @@ export const getStudentDetailedInsights = async (studentId) => {
   return api.get(`/batch-management/student/${studentId}/detailed-insights`);
 };
 
-export const bulkMigrateStudentsProgress = async () => {
-  return api.post('/batch-management/students/bulk-migrate-progress');
-};
-
 // Question Bank CRUD Operations
 export const getQuestions = async (moduleId, levelId) => {
   return api.get('/test-management/questions', {
@@ -460,18 +456,6 @@ export const getTestResultById = async (testId) => {
     return api.get(`/student/test-result/${testId}`);
 };
 
-// Notification Settings API functions
-export const getNotificationSettings = async () => {
-    return api.get('/notification-settings/');
-};
-
-export const updateNotificationSettings = async (settingsData) => {
-    return api.put('/notification-settings/', settingsData);
-};
-
-export const getNotificationSettingsHealth = async () => {
-    return api.get('/notification-settings/health');
-};
 
 // SDMS Student Hierarchy & Data API functions
 export const getSdmsColleges = async () => {

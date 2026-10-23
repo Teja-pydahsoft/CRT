@@ -135,9 +135,6 @@ exports.uploadStudentsToBatch = async (req, res) => {
         });
         await student.save();
         createdCount++;
-
-        // Asynchronously notify via email
-        emailService.sendStudentCredentials(email, username, password, 'http://localhost:3000/login');
       }
     }
 

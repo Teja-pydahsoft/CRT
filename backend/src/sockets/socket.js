@@ -24,10 +24,6 @@ function initSocketIO(server, corsOrigins) {
       io.to(data.student_id).emit('module_access_changed', data);
     });
 
-    socket.on('test_notification', (data) => {
-      io.emit('test_notification', data);
-    });
-
     socket.on('exam_monitoring', (data) => {
       io.to('admin').emit('cheating_alert', data);
     });

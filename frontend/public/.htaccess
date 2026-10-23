@@ -9,14 +9,6 @@ RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule . /index.html [L]
 
-# Service Worker files - must be served with correct MIME type
-<FilesMatch "\.(sw\.js|OneSignalSDKWorker\.js|OneSignalSDK\.sw\.js)$">
-    Header set Content-Type "application/javascript"
-    Header set Cache-Control "no-cache, no-store, must-revalidate"
-    Header set Pragma "no-cache"
-    Header set Expires "0"
-</FilesMatch>
-
 # Cache static assets
 <FilesMatch "\.(js|css|png|jpg|jpeg|gif|ico|svg)$">
     ExpiresActive On

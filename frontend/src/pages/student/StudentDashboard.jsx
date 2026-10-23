@@ -5,7 +5,6 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useNotification } from '../../contexts/NotificationContext'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
 import EmailCollectionPrompt from '../../components/common/EmailCollectionPrompt'
-import NotificationSubscribeButton from '../../components/student/NotificationSubscribeButton'
 import api from '../../services/api'
 import { 
   BrainCircuit, 
@@ -878,8 +877,6 @@ Track your learning progress
         </div>
       )}
       
-      {/* Floating Notification Subscribe Button */}
-      <NotificationSubscribeButton />
     </div>
   )
 }

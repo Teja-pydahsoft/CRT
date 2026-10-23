@@ -16,7 +16,6 @@ import SSOLogin from './pages/auth/SSOLogin'
 import SuperAdminDashboard from './pages/superadmin/SuperAdminDashboard'
 
 import AdminPermissions from './pages/superadmin/AdminPermissions'
-import NotificationSettings from './pages/superadmin/NotificationSettings'
 import TestManagement from './pages/superadmin/TestManagement'
 import StudentManagement from './pages/superadmin/StudentManagement'
 import ResultsManagement from './pages/superadmin/ResultsManagement'
@@ -59,7 +58,6 @@ import ProtectedRoute from './components/common/ProtectedRoute'
 import LoadingSpinner from './components/common/LoadingSpinner'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import NotificationToast from './components/common/NotificationToast'
-import OneSignalIntegration from './components/common/OneSignalIntegration'
 
 // Admin Components
 import SuperAdminSidebar from './components/common/SuperAdminSidebar'
@@ -103,7 +101,6 @@ function AppContent() {
         }}
       />
       <NotificationToast />
-      <OneSignalIntegration />
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<GetStarted />} />
@@ -117,7 +114,6 @@ function AppContent() {
             <Route path="dashboard" element={<SuperAdminDashboard />} />
 
             <Route path="admin-permissions" element={<AdminPermissions />} />
-            <Route path="notification-settings" element={<NotificationSettings />} />
             <Route path="global-settings" element={<GlobalSettings />} />
             <Route path="students" element={<StudentManagement />} />
             <Route path="results" element={<ResultsManagement />} />

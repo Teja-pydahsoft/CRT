@@ -32,7 +32,6 @@
     "mysql2": "^3.24.5",
     "papaparse": "^5.4.1",
     "socket.io": "^4.7.4",
-    "web-push": "^3.6.7",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
