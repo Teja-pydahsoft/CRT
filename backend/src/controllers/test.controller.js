@@ -157,6 +157,45 @@ exports.getStudentCount = async (req, res) => {
   }
 };
 
+exports.uploadQuestions = async (req, res) => {
+  try {
+    const { module_id, level_id } = req.body;
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No CSV file uploaded' });
+    }
+
+    const csvContent = req.file.buffer.toString('utf-8');
+    const lines = csvContent.split('\n').filter(l => l.trim().length > 0);
+    
+    let createdCount = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const parts = lines[i].split(',');
+      if (parts.length >= 2) {
+        const questionText = parts[0].trim();
+        const correctAnswer = parts[1].trim();
+        const options = parts.slice(2).map(o => o.trim());
+
+        const q = new Question({
+          text: questionText,
+          module_id: module_id || 'reading',
+          level_id: level_id ? parseInt(level_id) : 1,
+          correct_answer: correctAnswer,
+          options: options.length ? options : [correctAnswer]
+        });
+        await q.save();
+        createdCount++;
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Uploaded ${createdCount} questions successfully.`
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.createTestFromBank = async (req, res) => {
   try {
     const test = new Test(req.body);
