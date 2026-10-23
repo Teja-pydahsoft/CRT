@@ -1,0 +1,9 @@
+{
+  "name": "versant-ai-server",
+  "version": "1.0.0",
+  "description": "VERSANT 1-to-1 Audio-to-Text and Text-to-Voice AI Server",
+  "scripts": {
+    "start": "python app.py",
+    "dev": "python app.py"
+  }
+}

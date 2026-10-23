@@ -1,0 +1,25 @@
+const express = require('express');
+const router = express.Router();
+const testController = require('../controllers/test.controller');
+const authenticateToken = require('../middleware/auth.middleware');
+const upload = require('../middleware/upload.middleware');
+
+router.use(authenticateToken);
+
+router.get('/modules', testController.getModules);
+router.get('/levels', testController.getLevels);
+router.get('/tests', testController.getAllTests);
+router.get('/questions', testController.getQuestions);
+
+router.post('/upload-questions', upload.single('file'), testController.uploadQuestions);
+router.post('/create-test-from-bank', testController.createTestFromBank);
+router.post('/submit-practice-test', upload.single('audio'), testController.submitPracticeTest);
+
+// 1-to-1 Audio <-> Text Conversion API endpoints
+router.post('/transcribe-audio', upload.single('audio'), testController.transcribeAudio);
+router.post('/audio-to-text', upload.single('audio'), testController.transcribeAudio);
+router.post('/validate-transcript', testController.validateTranscript);
+router.post('/text-to-voice', testController.generateTTS);
+router.post('/generate-tts', testController.generateTTS);
+
+module.exports = router;
