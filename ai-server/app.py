@@ -22,8 +22,10 @@ def get_whisper_model():
     if _whisper_model is None:
         try:
             import whisper
-            model_name = os.environ.get('WHISPER_MODEL', 'base')
+            model_name = os.environ.get('WHISPER_MODEL', 'tiny')
+            print(f"[AI Server] Initializing Whisper model '{model_name}'...")
             _whisper_model = whisper.load_model(model_name)
+            print(f"[AI Server] Whisper model '{model_name}' loaded successfully on {_whisper_model.device}")
         except Exception as e:
             print(f"[AI Server] Warning: Could not initialize Whisper model: {e}")
             _whisper_model = None
