@@ -568,4 +568,8 @@ export const getCrtStats = async () => {
   return api.get('/crt/stats');
 };
 
+export const generateCrtTTSPreview = async (data) => {
+  return api.post('/crt/tts-preview', data);
+};
+
 export default api;

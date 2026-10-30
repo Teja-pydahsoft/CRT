@@ -23,8 +23,9 @@ router.post('/questions/bulk', crtController.bulkUploadQuestions);
 router.put('/questions/:id', crtController.updateQuestion);
 router.delete('/questions/:id', crtController.deleteQuestion);
 
-// System stats
+// System stats & AI voice preview
 router.get('/stats', crtController.getStats);
+router.post('/tts-preview', crtController.generateTTSPreview);
 
 module.exports = router;
 

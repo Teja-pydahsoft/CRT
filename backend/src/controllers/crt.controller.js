@@ -1,6 +1,7 @@
 const CrtModule = require('../models/CrtModule');
 const Question = require('../models/Question');
 const questionBankService = require('../services/questionBank.service');
+const aiService = require('../services/ai.service');
 
 // Helper to slugify a string
 const slugify = (text) => {
@@ -12,17 +13,17 @@ const slugify = (text) => {
     .replace(/^-+|-+$/g, '');
 };
 
-// Seed default dynamic CRT modules, topics and levels if database collection is empty
+// Standard Level Presets
+const standardLevels = [
+  { level: 1, name: 'Level 1 (Beginner)', description: 'Fundamental concepts, basic formulas, and direct problems' },
+  { level: 2, name: 'Level 2 (Intermediate)', description: 'Standard exam problems and moderate multi-step questions' },
+  { level: 3, name: 'Level 3 (Advanced)', description: 'Complex scenarios, high-difficulty, and speed shortcuts' }
+];
+
+// Seed default dynamic CRT & Versant modules, topics, and levels
 const seedDefaultCrtStructure = async () => {
   const count = await CrtModule.countDocuments();
-  if (count > 0) return;
-
-  const standardLevels = [
-    { level: 1, name: 'Level 1 (Beginner)', description: 'Fundamental concepts, basic formulas, and direct problems' },
-    { level: 2, name: 'Level 2 (Intermediate)', description: 'Standard exam problems and moderate multi-step questions' },
-    { level: 3, name: 'Level 3 (Advanced)', description: 'Complex scenarios, high-difficulty, and speed shortcuts' }
-  ];
-
+  
   const defaultModules = [
     {
       name: 'Quantitative Aptitude',
@@ -196,10 +197,73 @@ const seedDefaultCrtStructure = async () => {
           order: 4
         }
       ]
+    },
+    {
+      name: 'Versant & Voice Assessment',
+      code: 'versant',
+      description: 'Speech-to-Text and Text-to-Speech communication engine: Reading aloud, sentence repetition, listening comprehension and speaking.',
+      icon: 'Brain',
+      color: 'rose',
+      order: 5,
+      topics: [
+        {
+          name: 'Part A: Reading Aloud (Audio-to-Text)',
+          code: 'versant-reading',
+          description: 'Candidate reads on-screen sentences aloud. AI Whisper converts speech to text and evaluates pronunciation accuracy.',
+          levels: standardLevels,
+          order: 1
+        },
+        {
+          name: 'Part B: Repeat Sentence (Dual Voice AI)',
+          code: 'versant-repeat',
+          description: 'System plays spoken audio sentence (Text-to-Audio TTS). Candidate repeats into microphone (Audio-to-Text STT).',
+          levels: standardLevels,
+          order: 2
+        },
+        {
+          name: 'Part C: Questions & Short Answers (Dual Voice AI)',
+          code: 'versant-qa',
+          description: 'System asks spoken questions (Text-to-Audio). Candidate gives one or two word voice answers (Audio-to-Text).',
+          levels: standardLevels,
+          order: 3
+        },
+        {
+          name: 'Part D: Sentence Builds (Dual Voice AI)',
+          code: 'versant-builds',
+          description: 'System speaks scrambled phrases. Candidate speaks the full rearranged sentence into microphone.',
+          levels: standardLevels,
+          order: 4
+        },
+        {
+          name: 'Part E: Story Retelling & Speaking (Audio-to-Text)',
+          code: 'versant-story',
+          description: 'Candidate speaks on a topic or retells a narrative for 30-45 seconds with fluency and vocabulary scoring.',
+          levels: standardLevels,
+          order: 5
+        },
+        {
+          name: 'Part F: Listening Comprehension (Text-to-Audio)',
+          code: 'versant-listening',
+          description: 'Candidate listens to conversations and passages (TTS Voice) and answers comprehension questions.',
+          levels: standardLevels,
+          order: 6
+        }
+      ]
     }
   ];
 
-  await CrtModule.insertMany(defaultModules);
+  if (count === 0) {
+    await CrtModule.insertMany(defaultModules);
+  } else {
+    // Ensure versant module is added if not yet present
+    const hasVersant = await CrtModule.findOne({ code: 'versant' });
+    if (!hasVersant) {
+      const versantMod = defaultModules.find(m => m.code === 'versant');
+      if (versantMod) {
+        await CrtModule.create(versantMod);
+      }
+    }
+  }
 
   // Also seed initial questions into Question collection if empty
   const qCount = await Question.countDocuments();
@@ -209,10 +273,9 @@ const seedDefaultCrtStructure = async () => {
       const aptitudeMod = createdModules.find(m => m.code === 'aptitude');
       const reasoningMod = createdModules.find(m => m.code === 'reasoning');
       const technicalMod = createdModules.find(m => m.code === 'technical');
+      const versantMod = createdModules.find(m => m.code === 'versant');
 
       const seedQuestions = [];
-
-      // Seed from DEFAULT_QUESTION_BANK
       const defaultBank = questionBankService.DEFAULT_QUESTION_BANK || {};
       const crtBank = defaultBank.crt || {};
 
@@ -228,7 +291,8 @@ const seedDefaultCrtStructure = async () => {
             subcategory: topic ? topic.code : 'aptitude',
             level_id: lvl,
             level_name: `Level ${lvl}`,
-            question_type: q.question_type || 'mcq',
+            question_type: 'mcq',
+            conversion_type: 'none',
             options: q.options || [],
             correct_answer: q.correct_answer,
             explanation: q.explanation || ''
@@ -248,7 +312,8 @@ const seedDefaultCrtStructure = async () => {
             subcategory: topic ? topic.code : 'reasoning',
             level_id: lvl,
             level_name: `Level ${lvl}`,
-            question_type: q.question_type || 'mcq',
+            question_type: 'mcq',
+            conversion_type: 'none',
             options: q.options || [],
             correct_answer: q.correct_answer,
             explanation: q.explanation || ''
@@ -268,12 +333,78 @@ const seedDefaultCrtStructure = async () => {
             subcategory: topic ? topic.code : 'technical',
             level_id: lvl,
             level_name: `Level ${lvl}`,
-            question_type: q.question_type || 'mcq',
+            question_type: 'mcq',
+            conversion_type: 'none',
             options: q.options || [],
             correct_answer: q.correct_answer,
             explanation: q.explanation || ''
           });
         });
+      }
+
+      // Seed Versant Speech AI Sample Questions
+      if (versantMod && versantMod.topics && versantMod.topics.length > 0) {
+        const readingTopic = versantMod.topics.find(t => t.code === 'versant-reading');
+        const repeatTopic = versantMod.topics.find(t => t.code === 'versant-repeat');
+        const listeningTopic = versantMod.topics.find(t => t.code === 'versant-listening');
+
+        if (readingTopic) {
+          seedQuestions.push({
+            text: 'Read the following sentence aloud clearly: "Traffic congestion has become a major challenge for modern urban cities worldwide."',
+            module_id: versantMod.code,
+            main_module_id: versantMod._id,
+            topic_id: readingTopic._id.toString(),
+            subcategory: readingTopic.code,
+            level_id: 1,
+            level_name: 'Level 1 (Beginner)',
+            question_type: 'audio_to_text',
+            conversion_type: 'audio_to_text',
+            reference_text: 'Traffic congestion has become a major challenge for modern urban cities worldwide.',
+            correct_answer: 'Traffic congestion has become a major challenge for modern urban cities worldwide.',
+            time_limit_seconds: 30,
+            options: [],
+            explanation: 'Audio-to-Text: AI Whisper transcribes candidate speech and evaluates phonetic accuracy, word match, and fluency.'
+          });
+        }
+
+        if (repeatTopic) {
+          seedQuestions.push({
+            text: 'Listen to the audio sentence and repeat it exactly as you hear it.',
+            module_id: versantMod.code,
+            main_module_id: versantMod._id,
+            topic_id: repeatTopic._id.toString(),
+            subcategory: repeatTopic.code,
+            level_id: 2,
+            level_name: 'Level 2 (Intermediate)',
+            question_type: 'audio_interactive',
+            conversion_type: 'both',
+            audio_script: 'Please leave your visitor badge at the reception desk before departing.',
+            reference_text: 'Please leave your visitor badge at the reception desk before departing.',
+            correct_answer: 'Please leave your visitor badge at the reception desk before departing.',
+            time_limit_seconds: 25,
+            options: [],
+            explanation: 'Dual Voice AI: System synthesizes audio prompt via Text-to-Audio (TTS), then transcribes and scores student repetition via Audio-to-Text (STT).'
+          });
+        }
+
+        if (listeningTopic) {
+          seedQuestions.push({
+            text: 'According to the announcement, what time does the morning express train depart?',
+            module_id: versantMod.code,
+            main_module_id: versantMod._id,
+            topic_id: listeningTopic._id.toString(),
+            subcategory: listeningTopic.code,
+            level_id: 1,
+            level_name: 'Level 1 (Beginner)',
+            question_type: 'text_to_audio',
+            conversion_type: 'text_to_audio',
+            audio_script: 'Attention all passengers. The morning express train bound for Chicago will depart promptly from Platform 4 at quarter past nine.',
+            options: ['8:45 AM', '9:15 AM', '9:45 AM', '10:15 AM'],
+            correct_answer: '9:15 AM',
+            time_limit_seconds: 40,
+            explanation: 'Text-to-Audio (TTS): System plays synthesized audio prompt; student answers comprehension multiple choice.'
+          });
+        }
       }
 
       if (seedQuestions.length > 0) {
@@ -469,7 +600,6 @@ exports.deleteModule = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Module not found' });
     }
 
-    // Delete module
     await CrtModule.findByIdAndDelete(id);
 
     return res.json({
@@ -494,7 +624,6 @@ exports.createTopic = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Topic name is required' });
     }
 
-    // Prompt & requirement: User MUST configure / select levels
     if (!levels || !Array.isArray(levels) || levels.length === 0) {
       return res.status(400).json({
         success: false,
@@ -509,7 +638,6 @@ exports.createTopic = async (req, res) => {
 
     const generatedCode = (code && code.trim()) ? slugify(code) : slugify(name);
 
-    // Format & validate levels
     const formattedLevels = levels.map((lvl, idx) => {
       if (typeof lvl === 'number') {
         return {
@@ -644,7 +772,7 @@ exports.deleteTopic = async (req, res) => {
 
 /**
  * GET /crt/questions
- * Filter questions by module, topic, and level
+ * Filter questions by module, topic, level, and system conversion type
  */
 exports.getQuestions = async (req, res) => {
   try {
@@ -652,6 +780,8 @@ exports.getQuestions = async (req, res) => {
       module_id,
       topic_id,
       level_id,
+      conversion_type,
+      question_type,
       search,
       page = 1,
       limit = 50
@@ -664,7 +794,6 @@ exports.getQuestions = async (req, res) => {
         { module_id: module_id },
         { subcategory: module_id }
       ];
-      // If it looks like a valid Mongo ObjectId, also query main_module_id
       if (/^[0-9a-fA-F]{24}$/.test(module_id)) {
         filter.$or.push({ main_module_id: module_id });
       }
@@ -690,13 +819,23 @@ exports.getQuestions = async (req, res) => {
       filter.level_id = parseInt(level_id, 10);
     }
 
+    if (conversion_type && conversion_type !== 'all') {
+      filter.conversion_type = conversion_type;
+    }
+
+    if (question_type && question_type !== 'all') {
+      filter.question_type = question_type;
+    }
+
     if (search && search.trim()) {
       const searchRegex = { $regex: search.trim(), $options: 'i' };
       const searchCondition = {
         $or: [
           { text: searchRegex },
           { options: searchRegex },
-          { explanation: searchRegex }
+          { explanation: searchRegex },
+          { reference_text: searchRegex },
+          { audio_script: searchRegex }
         ]
       };
       if (filter.$and) {
@@ -741,7 +880,7 @@ exports.getQuestions = async (req, res) => {
 
 /**
  * POST /crt/questions
- * Create a single question
+ * Create a single question with System Conversion Type (Text to Audio / Audio to Text / Both)
  */
 exports.createQuestion = async (req, res) => {
   try {
@@ -753,25 +892,49 @@ exports.createQuestion = async (req, res) => {
       subcategory,
       level_id,
       level_name,
-      question_type,
+      question_type = 'mcq',
+      conversion_type,
       options,
       correct_answer,
+      reference_text,
+      audio_script,
+      audio_url,
+      time_limit_seconds,
+      code_stub,
+      expected_output,
       explanation
     } = req.body;
 
     if (!text || !text.trim()) {
-      return res.status(400).json({ success: false, message: 'Question text is required' });
+      return res.status(400).json({ success: false, message: 'Question text or prompt is required' });
+    }
+
+    // Auto-resolve conversion type
+    let resolvedConversion = conversion_type;
+    if (!resolvedConversion || resolvedConversion === 'none') {
+      if (question_type === 'text_to_audio' || question_type === 'listening') {
+        resolvedConversion = 'text_to_audio';
+      } else if (question_type === 'audio_to_text' || question_type === 'speaking') {
+        resolvedConversion = 'audio_to_text';
+      } else if (question_type === 'audio_interactive' || question_type === 'both') {
+        resolvedConversion = 'both';
+      } else {
+        resolvedConversion = 'none';
+      }
     }
 
     const cleanOptions = Array.isArray(options)
       ? options.map(o => String(o).trim()).filter(Boolean)
       : [];
 
-    if (cleanOptions.length < 2) {
-      return res.status(400).json({ success: false, message: 'At least 2 options are required' });
+    // For standard MCQ, require at least 2 options
+    if (resolvedConversion === 'none' && question_type === 'mcq' && cleanOptions.length < 2) {
+      return res.status(400).json({ success: false, message: 'At least 2 options are required for Multiple Choice questions' });
     }
 
-    const answer = correct_answer !== undefined ? String(correct_answer).trim() : cleanOptions[0];
+    const refText = reference_text ? String(reference_text).trim() : (resolvedConversion === 'audio_to_text' || resolvedConversion === 'both' ? text.trim() : '');
+    const script = audio_script ? String(audio_script).trim() : (resolvedConversion === 'text_to_audio' || resolvedConversion === 'both' ? text.trim() : '');
+    const answer = correct_answer !== undefined ? String(correct_answer).trim() : (cleanOptions[0] || refText || '');
 
     const question = new Question({
       text: text.trim(),
@@ -781,9 +944,16 @@ exports.createQuestion = async (req, res) => {
       subcategory: subcategory || topic_id || 'general',
       level_id: level_id ? parseInt(level_id, 10) : 1,
       level_name: level_name || `Level ${level_id || 1}`,
-      question_type: question_type || 'mcq',
+      question_type: question_type,
+      conversion_type: resolvedConversion,
       options: cleanOptions,
       correct_answer: answer,
+      reference_text: refText,
+      audio_script: script,
+      audio_url: audio_url || '',
+      time_limit_seconds: time_limit_seconds ? parseInt(time_limit_seconds, 10) : 45,
+      code_stub: code_stub || '',
+      expected_output: expected_output || '',
       explanation: explanation ? explanation.trim() : ''
     });
 
@@ -791,7 +961,7 @@ exports.createQuestion = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Question added successfully',
+      message: 'Question added successfully with conversion type',
       data: question
     });
   } catch (error) {
@@ -801,7 +971,7 @@ exports.createQuestion = async (req, res) => {
 
 /**
  * POST /crt/questions/bulk
- * Bulk upload questions parsed from CSV / Excel
+ * Bulk upload questions parsed from CSV / Excel supporting System Types
  */
 exports.bulkUploadQuestions = async (req, res) => {
   try {
@@ -821,16 +991,31 @@ exports.bulkUploadQuestions = async (req, res) => {
 
     const docsToInsert = [];
 
-    questions.forEach((q, idx) => {
+    questions.forEach((q) => {
       const qText = q.text || q.question;
       if (!qText || !String(qText).trim()) return;
 
       const opts = Array.isArray(q.options)
         ? q.options.map(o => String(o).trim()).filter(Boolean)
-        : [q.option_a, q.option_b, q.option_c, q.option_d].filter(Boolean);
+        : [q.option_a, q.option_b, q.option_c, q.option_d].map(o => (o !== undefined && o !== null) ? String(o).trim() : '').filter(Boolean);
 
-      const finalOpts = opts.length >= 2 ? opts : ['Option A', 'Option B', 'Option C', 'Option D'];
-      const ans = q.correct_answer || q.answer || finalOpts[0];
+      const qType = q.question_type || q.type || 'mcq';
+      let convType = q.conversion_type;
+      if (!convType || convType === 'none') {
+        if (qType === 'text_to_audio' || q.audio_script || qType === 'listening') {
+          convType = 'text_to_audio';
+        } else if (qType === 'audio_to_text' || q.reference_text || qType === 'speaking') {
+          convType = 'audio_to_text';
+        } else if (qType === 'both' || qType === 'audio_interactive') {
+          convType = 'both';
+        } else {
+          convType = 'none';
+        }
+      }
+
+      const refText = q.reference_text || (convType === 'audio_to_text' || convType === 'both' ? String(qText).trim() : '');
+      const script = q.audio_script || (convType === 'text_to_audio' || convType === 'both' ? String(qText).trim() : '');
+      const ans = q.correct_answer || q.answer || refText || (opts.length > 0 ? opts[0] : '');
 
       docsToInsert.push({
         text: String(qText).trim(),
@@ -840,9 +1025,16 @@ exports.bulkUploadQuestions = async (req, res) => {
         subcategory: subcategory || q.subcategory || topic_id || 'general',
         level_id: q.level_id ? parseInt(q.level_id, 10) : (level_id ? parseInt(level_id, 10) : 1),
         level_name: q.level_name || level_name || `Level ${level_id || 1}`,
-        question_type: q.question_type || 'mcq',
-        options: finalOpts,
+        question_type: qType,
+        conversion_type: convType,
+        options: opts,
         correct_answer: String(ans).trim(),
+        reference_text: String(refText).trim(),
+        audio_script: String(script).trim(),
+        audio_url: q.audio_url || '',
+        time_limit_seconds: q.time_limit_seconds ? parseInt(q.time_limit_seconds, 10) : 45,
+        code_stub: q.code_stub || '',
+        expected_output: q.expected_output || '',
         explanation: q.explanation ? String(q.explanation).trim() : ''
       });
     });
@@ -868,7 +1060,7 @@ exports.bulkUploadQuestions = async (req, res) => {
 
 /**
  * PUT /crt/questions/:id
- * Edit an existing question
+ * Edit an existing question including System Conversion fields
  */
 exports.updateQuestion = async (req, res) => {
   try {
@@ -877,12 +1069,19 @@ exports.updateQuestion = async (req, res) => {
       text,
       options,
       correct_answer,
+      reference_text,
+      audio_script,
+      audio_url,
+      time_limit_seconds,
       explanation,
       level_id,
       level_name,
       question_type,
+      conversion_type,
       topic_id,
-      subcategory
+      subcategory,
+      code_stub,
+      expected_output
     } = req.body;
 
     const question = await Question.findById(id);
@@ -891,16 +1090,23 @@ exports.updateQuestion = async (req, res) => {
     }
 
     if (text && text.trim()) question.text = text.trim();
-    if (Array.isArray(options) && options.length >= 2) {
+    if (Array.isArray(options)) {
       question.options = options.map(o => String(o).trim()).filter(Boolean);
     }
     if (correct_answer !== undefined) question.correct_answer = String(correct_answer).trim();
+    if (reference_text !== undefined) question.reference_text = String(reference_text).trim();
+    if (audio_script !== undefined) question.audio_script = String(audio_script).trim();
+    if (audio_url !== undefined) question.audio_url = audio_url;
+    if (time_limit_seconds !== undefined) question.time_limit_seconds = parseInt(time_limit_seconds, 10);
     if (explanation !== undefined) question.explanation = String(explanation).trim();
     if (level_id !== undefined) question.level_id = parseInt(level_id, 10);
     if (level_name) question.level_name = level_name;
     if (question_type) question.question_type = question_type;
+    if (conversion_type) question.conversion_type = conversion_type;
     if (topic_id) question.topic_id = topic_id;
     if (subcategory) question.subcategory = subcategory;
+    if (code_stub !== undefined) question.code_stub = code_stub;
+    if (expected_output !== undefined) question.expected_output = expected_output;
     question.updated_at = new Date();
 
     await question.save();
@@ -937,8 +1143,25 @@ exports.deleteQuestion = async (req, res) => {
 };
 
 /**
+ * POST /crt/tts-preview
+ * Generate instant TTS voice speech preview for Text-to-Audio prompts
+ */
+exports.generateTTSPreview = async (req, res) => {
+  try {
+    const { text, language = 'en', accent = 'com' } = req.body;
+    if (!text || !text.trim()) {
+      return res.status(400).json({ success: false, message: 'Text is required for TTS conversion' });
+    }
+    const ttsResult = await aiService.generateTTS(text.trim(), language, accent, 'base64');
+    return res.json(ttsResult);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
  * GET /crt/stats
- * Overview counts for CRT portal
+ * Overview counts for CRT & Versant portal
  */
 exports.getStats = async (req, res) => {
   try {
@@ -953,16 +1176,24 @@ exports.getStats = async (req, res) => {
       totalTopics += (m.topics || []).filter(t => t.is_active !== false).length;
     });
 
+    const [audioToTextCount, textToAudioCount, bothCount] = await Promise.all([
+      Question.countDocuments({ conversion_type: 'audio_to_text' }),
+      Question.countDocuments({ conversion_type: 'text_to_audio' }),
+      Question.countDocuments({ conversion_type: 'both' })
+    ]);
+
     return res.json({
       success: true,
       data: {
         totalModules: modulesCount,
         totalTopics: totalTopics,
-        totalQuestions: questionsCount
+        totalQuestions: questionsCount,
+        audioToTextQuestions: audioToTextCount,
+        textToAudioQuestions: textToAudioCount,
+        dualVoiceQuestions: bothCount
       }
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-

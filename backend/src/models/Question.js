@@ -8,13 +8,24 @@ const questionSchema = new mongoose.Schema({
   level_id: { type: Number, default: 1 },
   level_name: { type: String, default: 'Level 1' },
   subcategory: { type: String, default: 'general' },
-  question_type: { type: String, default: 'mcq' }, // mcq, sentence, paragraph, technical, audio
+  question_type: { 
+    type: String, 
+    default: 'mcq' 
+  }, // mcq, text_to_audio, audio_to_text, audio_interactive, technical, sentence, paragraph
+  conversion_type: { 
+    type: String, 
+    enum: ['none', 'text_to_audio', 'audio_to_text', 'both'], 
+    default: 'none' 
+  }, // none (MCQ/Written), text_to_audio (TTS voice prompt), audio_to_text (STT speech scoring), both (Dual voice AI)
   options: [{ type: String }],
   correct_answer: { type: mongoose.Schema.Types.Mixed },
+  reference_text: { type: String, default: '' }, // Spoken sentence reference for Audio-to-Text grading
+  audio_script: { type: String, default: '' },   // Script to synthesize for Text-to-Audio prompts
   explanation: { type: String, default: '' },
   audio_url: { type: String, default: '' },
   code_stub: { type: String, default: '' },
   expected_output: { type: String, default: '' },
+  time_limit_seconds: { type: Number, default: 45 },
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now }
 }, { collection: 'questions' });
