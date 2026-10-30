@@ -685,7 +685,8 @@ class SDMSService {
     section,
     search,
     page = 1,
-    limit = 20
+    limit = 20,
+    includePhoto = true
   }) {
     const pool = this.getPool();
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -754,6 +755,7 @@ class SDMSService {
         s.current_semester,
         s.section,
         s.student_status,
+        ${includePhoto ? 's.student_photo' : 'NULL as student_photo'},
         s.college_id,
         s.course_id,
         s.branch_id,
@@ -780,6 +782,9 @@ class SDMSService {
         id: s.id,
         name: s.student_name || 'N/A',
         student_name: s.student_name || 'N/A',
+        photo: s.student_photo || null,
+        student_photo: s.student_photo || null,
+        pin_no: s.pin_no || identifier,
         roll_number: identifier,
         username: identifier,
         email: s.email || `${identifier}@pydah.edu.in`,

@@ -161,7 +161,8 @@ exports.exportStudentsCsv = async (req, res) => {
       section,
       search,
       page: 1,
-      limit: 10000
+      limit: 10000,
+      includePhoto: false
     });
 
     const students = result.students || [];

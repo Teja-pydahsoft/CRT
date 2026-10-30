@@ -6,7 +6,6 @@ import { usePermissionContext } from '../../contexts/PermissionContext'
 import { motion } from 'framer-motion'
 import { toast } from 'react-hot-toast'
 import api from '../../services/api'
-import Header from './Header'
 
 const SuperAdminSidebar = () => {
   const location = useLocation()
@@ -347,28 +346,44 @@ const SuperAdminSidebar = () => {
           </div>
         </nav>
         
-        {/* Logout Button */}
+        {/* User Profile & Logout */}
         <motion.div 
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.3, type: 'spring', stiffness: 100 }}
           className="px-4 pb-4 mt-auto flex-shrink-0"
         >
+          {/* User Profile Card */}
+          <Link
+            to="/superadmin/profile"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="flex items-center mb-3 p-2.5 bg-gradient-to-r from-gray-50 to-blue-50/80 hover:from-blue-50 hover:to-indigo-50 border border-gray-200/80 rounded-2xl transition-all duration-200 group shadow-sm"
+            title="View Profile"
+          >
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center shadow-md flex-shrink-0 text-white font-bold text-sm">
+              {user?.name?.charAt(0)?.toUpperCase() || 'S'}
+            </div>
+            <div className="ml-3 min-w-0 flex-1">
+              <p className="text-sm font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+                {user?.name || 'Super Admin'}
+              </p>
+              <p className="text-xs text-gray-500 capitalize truncate">
+                {user?.role?.replace('_', ' ') || 'System Super Admin'}
+              </p>
+            </div>
+          </Link>
+
+          {/* Logout Button */}
           <button
             onClick={() => {
               handleLogout()
               setIsMobileMenuOpen(false)
             }}
-            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-gray-600 to-gray-700 text-white font-semibold px-3 py-2.5 rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 text-sm"
+            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-gray-600 to-gray-700 text-white font-semibold px-3 py-2.5 rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-300 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 text-sm"
           >
-            <motion.div
-              whileHover={{ rotate: 180 }}
-              transition={{ duration: 0.3 }}
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-            </motion.div>
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
             Logout
           </button>
         </motion.div>
@@ -575,7 +590,22 @@ const SuperAdminSidebar = () => {
       
       {/* Main Content */}
       <div className="flex-1 bg-gray-50 w-full lg:ml-64 flex flex-col h-screen overflow-hidden">
-        <Header />
+        {/* Mobile menu header */}
+        <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none"
+            aria-label="Open menu"
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-semibold text-xs flex items-center justify-center">
+              {user?.name?.charAt(0)?.toUpperCase() || 'S'}
+            </div>
+            <span className="text-sm font-semibold text-gray-800 truncate max-w-[150px]">{user?.name}</span>
+          </div>
+        </div>
         <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
         <Outlet />
         </div>
