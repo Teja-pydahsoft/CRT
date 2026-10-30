@@ -20,6 +20,7 @@ import ResultsManagement from './pages/superadmin/ResultsManagement'
 import QuestionBankUpload from './pages/superadmin/QuestionBankUpload'
 import CRTUpload from './pages/superadmin/CRTUpload'
 import ProgressTracking from './pages/superadmin/ProgressTracking'
+import UserManagement from './pages/superadmin/UserManagement'
 
 // Campus Admin Pages
 import CampusAdminDashboard from './pages/campus-admin/CampusAdminDashboard'
@@ -99,8 +100,8 @@ function AppContent() {
         <Route path="/sso-login" element={<SSOLogin />} />
 
         {/* Admin Routes */}
-        {/* Super Admin Routes */}
-        <Route path="/superadmin" element={<ProtectedRoute allowedRoles={['superadmin', 'campus_admin', 'course_admin']}><SuperAdminSidebar /></ProtectedRoute>}>
+        {/* Super Admin & Staff Portal Routes */}
+        <Route path="/superadmin" element={<ProtectedRoute allowedRoles={['superadmin', 'campus_admin', 'course_admin', 'staff']}><SuperAdminSidebar /></ProtectedRoute>}>
           <Route index element={<SuperAdminDashboard />} />
           <Route path="dashboard" element={<SuperAdminDashboard />} />
           <Route path="students" element={<StudentManagement />} />
@@ -108,8 +109,9 @@ function AppContent() {
           <Route path="progress-tracking" element={<ProgressTracking />} />
           <Route path="tests" element={<TestManagement />} />
           <Route path="tests/create" element={<TestManagement />} />
-          <Route path="question-bank-upload" element={<QuestionBankUpload />} />
+          <Route path="question-bank-upload" element={<Navigate to="/superadmin/crt-upload" replace />} />
           <Route path="crt-upload" element={<CRTUpload />} />
+          <Route path="user-management" element={<UserManagement />} />
           <Route path="profile" element={<SuperAdminProfile />} />
         </Route>
 

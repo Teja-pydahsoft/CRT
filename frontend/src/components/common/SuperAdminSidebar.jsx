@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom'
-import { FilePlus, BarChart, LayoutDashboard, GraduationCap, Menu, X } from 'lucide-react'
+import { FilePlus, BarChart, LayoutDashboard, GraduationCap, Users, Activity, Menu, X } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { usePermissionContext } from '../../contexts/PermissionContext'
 import { motion } from 'framer-motion'
 import { toast } from 'react-hot-toast'
 
 const SuperAdminSidebar = () => {
   const location = useLocation()
   const { logout, user } = useAuth()
+  const { hasPermission, isSuperAdmin } = usePermissionContext()
   const navigate = useNavigate()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
@@ -90,15 +92,21 @@ const SuperAdminSidebar = () => {
     }
   }
 
-  // Navigation items for super admin
-  const navLinks = [
+  // All available portal pages
+  const allNavLinks = [
     { name: 'Dashboard', path: '/superadmin/dashboard', icon: LayoutDashboard, module: 'dashboard' },
-    { name: 'Student Management', path: '/superadmin/students', icon: GraduationCap, module: 'student_management' },
-    { name: 'Test Management', path: '/superadmin/tests', icon: FilePlus, module: 'test_management' },
-    { name: 'Question Bank Upload', path: '/superadmin/question-bank-upload', icon: FilePlus, module: 'question_bank_upload' },
+    { name: 'Student Management', path: '/superadmin/students', icon: GraduationCap, module: 'students' },
+    { name: 'Test Management', path: '/superadmin/tests', icon: FilePlus, module: 'tests' },
     { name: 'CRT Upload', path: '/superadmin/crt-upload', icon: FilePlus, module: 'crt_upload' },
-    { name: 'Results Management', path: '/superadmin/results', icon: BarChart, module: 'results_management' },
+    { name: 'Results Management', path: '/superadmin/results', icon: BarChart, module: 'results' },
+    { name: 'Progress Tracking', path: '/superadmin/progress-tracking', icon: Activity, module: 'progress_tracking' },
+    { name: 'User Management', path: '/superadmin/user-management', icon: Users, module: 'user_management' },
   ]
+
+  // Filter links dynamically based on read permission
+  const navLinks = isSuperAdmin
+    ? allNavLinks
+    : allNavLinks.filter(link => link.module === 'dashboard' || hasPermission(link.module, 'read'))
 
   const isActive = (path) => location.pathname.startsWith(path)
 
@@ -129,9 +137,15 @@ const SuperAdminSidebar = () => {
             <h1 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
               Study Edge
             </h1>
-            <p className="text-xs text-gray-600">
-              {user?.role === 'superadmin' ? 'Super Admin Portal' : 'Admin Portal'}
+            <p className="text-xs text-gray-600 font-medium capitalize">
+              {user?.role_name || (user?.role === 'superadmin' ? 'Super Admin Portal' : 'Admin Portal')}
             </p>
+            {user?.emp_no && (
+              <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-semibold">
+                <span>HRMS ID:</span>
+                <span>{user.emp_no}</span>
+              </div>
+            )}
           </motion.div>
 
           <nav className="flex-1 flex flex-col justify-between min-h-0">
@@ -214,7 +228,7 @@ const SuperAdminSidebar = () => {
                   {user?.name || 'Super Admin'}
                 </p>
                 <p className="text-xs text-gray-500 capitalize truncate">
-                  {user?.role?.replace('_', ' ') || 'System Super Admin'}
+                  {user?.role_name || user?.role?.replace('_', ' ') || 'Admin'}
                 </p>
               </div>
             </Link>
@@ -258,9 +272,15 @@ const SuperAdminSidebar = () => {
           <h1 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
             Study Edge
           </h1>
-          <p className="text-xs text-gray-600">
-            {user?.role === 'superadmin' ? 'Super Admin Portal' : 'Admin Portal'}
+          <p className="text-xs text-gray-600 font-medium capitalize">
+            {user?.role_name || (user?.role === 'superadmin' ? 'Super Admin Portal' : 'Admin Portal')}
           </p>
+          {user?.emp_no && (
+            <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-semibold">
+              <span>HRMS ID:</span>
+              <span>{user.emp_no}</span>
+            </div>
+          )}
         </motion.div>
 
         <nav className="flex-1 flex flex-col justify-between min-h-0">

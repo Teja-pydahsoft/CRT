@@ -29,7 +29,7 @@ const AdminSidebar = () => {
       // For super admin, no need to fetch permissions as they have all access
       if (user.role === 'super_admin' || user.role === 'superadmin') {
         setUserPermissions({
-          modules: ['dashboard', 'campus_management', 'course_management', 'batch_management', 'user_management', 'student_management', 'test_management', 'question_bank_upload', 'crt_upload', 'results_management', 'reports'],
+          modules: ['dashboard', 'campus_management', 'course_management', 'batch_management', 'user_management', 'student_management', 'test_management', 'crt_upload', 'results_management', 'reports'],
           can_create_campus: true,
           can_create_course: true,
           can_create_batch: true,
@@ -146,15 +146,6 @@ const AdminSidebar = () => {
       })
     }
 
-    // Question Bank Upload - only for super admin
-    if (userPermissions.modules?.includes('question_bank_upload') && 
-        (user.role === 'super_admin' || user.role === 'superadmin')) {
-      navigation.push({ 
-        name: 'Versant Upload', 
-        path: '/superadmin/question-bank-upload', 
-        icon: FileText 
-      })
-    }
 
     // CRT Upload - only for super admin
     if (userPermissions.modules?.includes('crt_upload') && 

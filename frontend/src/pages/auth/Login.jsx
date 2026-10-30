@@ -44,7 +44,7 @@ const Login = () => {
         }
         console.log('User role:', user.role)
         console.log('Available routes:', roleRoutes)
-        const redirectPath = location.state?.from?.pathname || roleRoutes[user.role] || '/'
+        const redirectPath = location.state?.from?.pathname || roleRoutes[user.role] || (user.role !== 'student' ? '/superadmin' : '/student')
         console.log('Redirecting to:', redirectPath)
         navigate(redirectPath, { replace: true })
       }

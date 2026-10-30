@@ -12,6 +12,8 @@ const batchRoutes = require('./routes/batch.routes');
 const testRoutes = require('./routes/test.routes');
 const studentRoutes = require('./routes/student.routes');
 const hrmsRoutes = require('./routes/hrms.routes');
+const userManagementRoutes = require('./routes/userManagement.routes');
+const crtRoutes = require('./routes/crt.routes');
 const superadminController = require('./controllers/superadmin.controller');
 
 const app = express();
@@ -54,6 +56,9 @@ app.use('/batch-management', batchRoutes);
 app.use('/test-management', testRoutes);
 app.use('/student', studentRoutes);
 app.use('/hrms', hrmsRoutes);
+app.use('/user-management', userManagementRoutes);
+app.use('/crt', crtRoutes);
+app.use('/test-management/crt', crtRoutes);
 
 // Centralized Error Handling Middleware
 app.use(errorHandler);

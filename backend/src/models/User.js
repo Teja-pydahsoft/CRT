@@ -3,14 +3,20 @@ const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true, index: true },
-  password: { type: String, required: true },
+  password: { type: String, required: false },
   email: { type: String, required: false },
   name: { type: String, required: false },
+  emp_no: { type: String, index: true, sparse: true },
   role: { 
     type: String, 
-    enum: ['superadmin', 'campus_admin', 'course_admin', 'student'],
-    required: true 
+    default: 'custom'
   },
+  role_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Role', default: null },
+  permissions: { type: mongoose.Schema.Types.Mixed, default: {} },
+  auth_source: { type: String, enum: ['local', 'hrms'], default: 'local' },
+  department_name: { type: String, default: '' },
+  designation_name: { type: String, default: '' },
+  phone_number: { type: String, default: '' },
   campus_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Campus', default: null },
   course_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Course', default: null },
   batch_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Batch', default: null },
@@ -20,7 +26,7 @@ const userSchema = new mongoose.Schema({
 }, { collection: 'users' });
 
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
+  if (!this.isModified('password') || !this.password) return next();
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
@@ -31,6 +37,7 @@ userSchema.pre('save', async function(next) {
 });
 
 userSchema.methods.comparePassword = async function(candidatePassword) {
+  if (!this.password) return false;
   return bcrypt.compare(candidatePassword, this.password);
 };
 

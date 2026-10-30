@@ -512,4 +512,60 @@ export const validateStudentsBulk = async (students) => {
   return api.post('/student/sdms/validate-students-bulk', { students });
 };
 
+// ==========================================
+// Dynamic CRT Module, Topic, Level & Question Endpoints
+// ==========================================
+
+export const getCrtModules = async () => {
+  return api.get('/crt/modules');
+};
+
+export const createCrtModule = async (data) => {
+  return api.post('/crt/modules', data);
+};
+
+export const updateCrtModule = async (id, data) => {
+  return api.put(`/crt/modules/${id}`, data);
+};
+
+export const deleteCrtModule = async (id) => {
+  return api.delete(`/crt/modules/${id}`);
+};
+
+export const createCrtTopic = async (moduleId, data) => {
+  return api.post(`/crt/modules/${moduleId}/topics`, data);
+};
+
+export const updateCrtTopic = async (moduleId, topicId, data) => {
+  return api.put(`/crt/modules/${moduleId}/topics/${topicId}`, data);
+};
+
+export const deleteCrtTopic = async (moduleId, topicId) => {
+  return api.delete(`/crt/modules/${moduleId}/topics/${topicId}`);
+};
+
+export const getCrtQuestions = async (params = {}) => {
+  return api.get('/crt/questions', { params });
+};
+
+export const createCrtQuestion = async (data) => {
+  return api.post('/crt/questions', data);
+};
+
+export const bulkUploadCrtQuestions = async (data) => {
+  return api.post('/crt/questions/bulk', data);
+};
+
+export const updateCrtQuestion = async (id, data) => {
+  return api.put(`/crt/questions/${id}`, data);
+};
+
+export const deleteCrtQuestion = async (id) => {
+  return api.delete(`/crt/questions/${id}`);
+};
+
+export const getCrtStats = async () => {
+  return api.get('/crt/stats');
+};
+
 export default api;

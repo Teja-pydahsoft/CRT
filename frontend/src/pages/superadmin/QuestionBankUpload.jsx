@@ -1,8 +1,8 @@
 import React from 'react';
-import { QuestionBankUpload as NewQuestionBankUpload } from './question-bank-upload';
+import CRTUpload from './CRTUpload';
 
 const QuestionBankUpload = () => {
-  return <NewQuestionBankUpload />;
+  return <CRTUpload />;
 };
 
-export default QuestionBankUpload; 
+export default QuestionBankUpload;

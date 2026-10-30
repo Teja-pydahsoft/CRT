@@ -1,30 +1,101 @@
 const jwt = require('jsonwebtoken');
 const env = require('../config/env');
 const User = require('../models/User');
+const Role = require('../models/Role');
+const hrmsService = require('../services/hrms.service');
+
+const ALL_PAGES = [
+  'dashboard',
+  'students',
+  'tests',
+  'crt_upload',
+  'results',
+  'progress_tracking',
+  'user_management'
+];
 
 exports.login = async (req, res) => {
   try {
     const { username, password } = req.body;
 
     if (!username || !password) {
-      return res.status(400).json({ success: false, message: 'Username and password required' });
+      return res.status(400).json({ success: false, message: 'Username / Employee Number and password required' });
     }
 
-    const user = await User.findOne({ username });
+    const cleanIdentifier = String(username).trim();
 
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'Invalid username or password' });
+    // 1. Find user in CRT portal database
+    let user = await User.findOne({
+      $or: [
+        { username: cleanIdentifier },
+        { emp_no: cleanIdentifier },
+        { email: cleanIdentifier }
+      ]
+    }).populate('role_id');
+
+    let isAuthenticated = false;
+
+    // 2. If user exists in CRT portal
+    if (user) {
+      if (user.status === 'inactive') {
+        return res.status(403).json({ success: false, message: 'Your account has been deactivated. Please contact an administrator.' });
+      }
+
+      // Check if user is linked to HRMS
+      if (user.auth_source === 'hrms' || user.emp_no) {
+        const hrmsCheck = await hrmsService.verifyHRMSPassword(user.emp_no || user.username || user.email, password);
+        if (hrmsCheck.verified) {
+          isAuthenticated = true;
+        } else if (user.password) {
+          // Fallback to local password if exists
+          isAuthenticated = await user.comparePassword(password);
+        }
+      } else {
+        // Local user authentication (e.g. initial superadmin)
+        isAuthenticated = await user.comparePassword(password);
+      }
+
+      if (!isAuthenticated) {
+        return res.status(401).json({ success: false, message: 'Invalid employee number / username or password' });
+      }
+    } else {
+      // 3. User not found in CRT. Check if they exist in HRMS directly
+      const hrmsCheck = await hrmsService.verifyHRMSPassword(cleanIdentifier, password);
+      if (hrmsCheck.verified) {
+        return res.status(403).json({
+          success: false,
+          message: `HRMS credentials verified for Employee (${cleanIdentifier}), but your portal account is pending role assignment. Please contact Super Admin to assign you access in User Management.`
+        });
+      }
+
+      return res.status(401).json({ success: false, message: 'Invalid employee number / username or password' });
     }
 
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Invalid username or password' });
+    // 4. Resolve effective permissions
+    let permissions = {};
+
+    if (user.role_id && user.role_id.permissions) {
+      permissions = { ...user.role_id.permissions };
+    }
+
+    if (user.permissions && typeof user.permissions === 'object') {
+      permissions = { ...permissions, ...user.permissions };
+    }
+
+    // Super Admin gets unrestricted read & write for all portal pages
+    if (user.role === 'superadmin') {
+      ALL_PAGES.forEach(page => {
+        permissions[page] = { read: true, write: true };
+      });
     }
 
     const tokenPayload = {
       id: user._id,
       username: user.username,
+      emp_no: user.emp_no,
       role: user.role,
+      role_name: user.role_id?.name || user.role,
+      permissions: permissions,
       campus_id: user.campus_id,
       course_id: user.course_id,
       batch_id: user.batch_id
@@ -44,8 +115,15 @@ exports.login = async (req, res) => {
       user: {
         id: user._id,
         username: user.username,
-        role: user.role,
+        emp_no: user.emp_no,
         name: user.name || user.username,
+        email: user.email,
+        role: user.role,
+        role_name: user.role_id?.name || user.role,
+        permissions: permissions,
+        department_name: user.department_name,
+        designation_name: user.designation_name,
+        phone_number: user.phone_number,
         campus_id: user.campus_id,
         course_id: user.course_id,
         batch_id: user.batch_id
@@ -69,17 +147,33 @@ exports.refreshToken = async (req, res) => {
     }
 
     const decoded = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET_KEY);
-    const user = await User.findById(decoded.id);
+    const user = await User.findById(decoded.id).populate('role_id');
 
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid refresh token' });
+    }
+
+    let permissions = {};
+    if (user.role_id && user.role_id.permissions) {
+      permissions = { ...user.role_id.permissions };
+    }
+    if (user.permissions) {
+      permissions = { ...permissions, ...user.permissions };
+    }
+    if (user.role === 'superadmin') {
+      ALL_PAGES.forEach(page => {
+        permissions[page] = { read: true, write: true };
+      });
     }
 
     const newAccessToken = jwt.sign(
       {
         id: user._id,
         username: user.username,
+        emp_no: user.emp_no,
         role: user.role,
+        role_name: user.role_id?.name || user.role,
+        permissions: permissions,
         campus_id: user.campus_id,
         course_id: user.course_id,
         batch_id: user.batch_id
@@ -100,10 +194,34 @@ exports.refreshToken = async (req, res) => {
 
 exports.getMe = async (req, res) => {
   try {
+    const user = await User.findById(req.user.id).populate('role_id').lean();
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    let permissions = {};
+    if (user.role_id && user.role_id.permissions) {
+      permissions = { ...user.role_id.permissions };
+    }
+    if (user.permissions) {
+      permissions = { ...permissions, ...user.permissions };
+    }
+    if (user.role === 'superadmin') {
+      ALL_PAGES.forEach(page => {
+        permissions[page] = { read: true, write: true };
+      });
+    }
+
     return res.json({
       success: true,
-      user: req.user,
-      data: req.user
+      user: {
+        ...user,
+        permissions
+      },
+      data: {
+        ...user,
+        permissions
+      }
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

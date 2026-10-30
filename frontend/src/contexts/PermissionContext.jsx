@@ -1,11 +1,13 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
+import { useAuth } from './AuthContext';
 
 const PermissionContext = createContext({
   permissions: {},
-  hasPermission: (page, access) => true,
-  isSubSuperadmin: false,
+  hasPermission: () => true,
+  canRead: () => true,
+  canWrite: () => true,
+  isSuperAdmin: true,
   loading: false,
-  error: null
 });
 
 export const usePermissionContext = () => {
@@ -17,32 +19,50 @@ export const usePermissionContext = () => {
 };
 
 export const PermissionProvider = ({ children }) => {
-  const [permissions, setPermissions] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const isSubSuperadmin = false;
+  const { user, loading } = useAuth();
 
-  // Check if user has permission
-  const hasPermission = () => true;
+  const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'super_admin';
 
-  // Check permission via API (always allowed)
-  const checkPermission = async () => true;
+  const userPermissions = useMemo(() => {
+    return user?.permissions || {};
+  }, [user]);
 
-  // Get permission templates
-  const getPermissionTemplates = async () => ({});
+  /**
+   * Check if the current user has permission for a specific page
+   * @param {string} page - Page identifier (e.g., 'dashboard', 'students', 'tests', 'user_management')
+   * @param {string} access - 'read' or 'write' (defaults to 'read')
+   */
+  const hasPermission = (page, access = 'read') => {
+    if (!user) return false;
+    if (isSuperAdmin) return true;
 
-  // Refresh permissions
-  const refreshPermissions = () => {};
+    const pagePerm = userPermissions[page];
+    if (!pagePerm) return false;
+
+    if (typeof pagePerm === 'string') {
+      if (access === 'read') return pagePerm === 'read' || pagePerm === 'write';
+      return pagePerm === 'write';
+    }
+
+    if (typeof pagePerm === 'object') {
+      if (access === 'read') return Boolean(pagePerm.read || pagePerm.write);
+      return Boolean(pagePerm.write);
+    }
+
+    return false;
+  };
+
+  const canRead = (page) => hasPermission(page, 'read');
+  const canWrite = (page) => hasPermission(page, 'write');
 
   const value = {
-    permissions,
+    permissions: userPermissions,
     hasPermission,
-    checkPermission,
-    isSubSuperadmin,
-    loading,
-    error,
-    refreshPermissions,
-    getPermissionTemplates
+    canRead,
+    canWrite,
+    isSuperAdmin,
+    isSubSuperadmin: false,
+    loading
   };
 
   return (
