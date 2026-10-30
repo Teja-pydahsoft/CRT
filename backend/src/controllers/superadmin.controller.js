@@ -58,8 +58,7 @@ exports.getGlobalFeatures = async (req, res) => {
       features: {
         test_taking: { name: 'Test Taking', enabled: true, required: true },
         speaking_evaluation: { name: 'Speaking AI Evaluation', enabled: true, required: true },
-        batch_management: { name: 'Batch Management', enabled: true, required: false },
-        analytics: { name: 'Advanced Analytics', enabled: true, required: false }
+        batch_management: { name: 'Batch Management', enabled: true, required: false }
       }
     }
   });

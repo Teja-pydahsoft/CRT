@@ -11,8 +11,6 @@ const courseAdminRoutes = require('./routes/courseAdmin.routes');
 const batchRoutes = require('./routes/batch.routes');
 const testRoutes = require('./routes/test.routes');
 const studentRoutes = require('./routes/student.routes');
-const adminManagementRoutes = require('./routes/adminManagement.routes');
-const subSuperadminRoutes = require('./routes/subSuperadmin.routes');
 const hrmsRoutes = require('./routes/hrms.routes');
 const superadminController = require('./controllers/superadmin.controller');
 
@@ -44,7 +42,6 @@ app.get('/health', (req, res) => {
 
 // Direct legacy / alias endpoint mappings for frontend compatibility
 app.get('/global-settings/user/features', superadminController.getGlobalFeatures);
-app.get('/global-settings/features/:role', superadminController.getGlobalFeatures);
 
 // Mount API Routers
 app.use('/auth', authRoutes);
@@ -56,8 +53,6 @@ app.use('/course-management', superadminRoutes);
 app.use('/batch-management', batchRoutes);
 app.use('/test-management', testRoutes);
 app.use('/student', studentRoutes);
-app.use('/admin-management', adminManagementRoutes);
-app.use('/sub-superadmin', subSuperadminRoutes);
 app.use('/hrms', hrmsRoutes);
 
 // Centralized Error Handling Middleware

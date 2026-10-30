@@ -38,7 +38,6 @@ const Sidebar = () => {
         return [
           { name: 'Dashboard', href: '/superadmin', icon: Home },
           { name: 'Modules', href: '/superadmin/tests', icon: FileText },
-          { name: 'Analytics', href: '/superadmin/analytics', icon: BarChart3 },
           { name: 'Settings', href: '/superadmin/settings', icon: Settings }
         ]
       
@@ -47,7 +46,6 @@ const Sidebar = () => {
           { name: 'Dashboard', href: '/campus-admin', icon: Home },
           { name: 'Students', href: '/campus-admin/students', icon: GraduationCap },
           { name: 'Results', href: '/campus-admin/results', icon: Award },
-          { name: 'Analytics', href: '/campus-admin/analytics', icon: Activity }
         ]
       
       case 'course_admin':
@@ -88,12 +86,6 @@ const Sidebar = () => {
       href: '/superadmin/campuses',
       icon: Building2,
       color: 'bg-purple-600',
-    },
-    {
-      name: 'System Analytics',
-      href: '/superadmin/analytics',
-      icon: BarChart,
-      color: 'bg-orange-600',
     },
   ]
 

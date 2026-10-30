@@ -29,7 +29,7 @@ const AdminSidebar = () => {
       // For super admin, no need to fetch permissions as they have all access
       if (user.role === 'super_admin' || user.role === 'superadmin') {
         setUserPermissions({
-          modules: ['dashboard', 'campus_management', 'course_management', 'batch_management', 'user_management', 'student_management', 'test_management', 'question_bank_upload', 'crt_upload', 'results_management', 'analytics', 'reports'],
+          modules: ['dashboard', 'campus_management', 'course_management', 'batch_management', 'user_management', 'student_management', 'test_management', 'question_bank_upload', 'crt_upload', 'results_management', 'reports'],
           can_create_campus: true,
           can_create_course: true,
           can_create_batch: true,
@@ -56,7 +56,7 @@ const AdminSidebar = () => {
       // Use default permissions based on role
       const defaultPermissions = {
         campus_admin: {
-          modules: ['dashboard', 'course_management', 'batch_management', 'student_management', 'test_management', 'results_management', 'analytics', 'reports'],
+          modules: ['dashboard', 'course_management', 'batch_management', 'student_management', 'test_management', 'results_management', 'reports'],
           can_create_campus: false,
           can_create_course: true,
           can_create_batch: true,
@@ -65,7 +65,7 @@ const AdminSidebar = () => {
           can_view_all_data: false
         },
         course_admin: {
-          modules: ['dashboard', 'batch_management', 'student_management', 'test_management', 'results_management', 'analytics'],
+          modules: ['dashboard', 'batch_management', 'student_management', 'test_management', 'results_management'],
           can_create_campus: false,
           can_create_course: false,
           can_create_batch: true,
@@ -178,7 +178,7 @@ const AdminSidebar = () => {
     // Analytics - for all admins
     if (userPermissions.modules?.includes('analytics')) {
       navigation.push({ 
-        name: 'Analytics', 
+        name: 
         path: `${basePath}/analytics`, 
         icon: BarChart 
       })

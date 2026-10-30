@@ -14,16 +14,12 @@ import SSOLogin from './pages/auth/SSOLogin'
 
 // Super Admin Pages
 import SuperAdminDashboard from './pages/superadmin/SuperAdminDashboard'
-
-import AdminPermissions from './pages/superadmin/AdminPermissions'
 import TestManagement from './pages/superadmin/TestManagement'
 import StudentManagement from './pages/superadmin/StudentManagement'
 import ResultsManagement from './pages/superadmin/ResultsManagement'
-import GlobalSettings from './pages/superadmin/GlobalSettings'
 import QuestionBankUpload from './pages/superadmin/QuestionBankUpload'
 import CRTUpload from './pages/superadmin/CRTUpload'
 import ProgressTracking from './pages/superadmin/ProgressTracking'
-import SubSuperadminManagement from './pages/superadmin/SubSuperadminManagement'
 
 // Campus Admin Pages
 import CampusAdminDashboard from './pages/campus-admin/CampusAdminDashboard'
@@ -65,11 +61,6 @@ import CampusAdminSidebar from './components/common/CampusAdminSidebar'
 import CourseAdminSidebar from './components/common/CourseAdminSidebar'
 import StudentSidebar from './pages/student/StudentSidebar'
 
-// Analytics Pages
-import RealAnalytics from './pages/analytics/RealAnalytics'
-
-// Admin Pages
-
 function AppContent() {
   const location = useLocation()
   const isPublicRoute = location.pathname === '/' || location.pathname === '/login'
@@ -108,49 +99,42 @@ function AppContent() {
         <Route path="/sso-login" element={<SSOLogin />} />
 
         {/* Admin Routes */}
-          {/* Super Admin Routes */}
-        <Route path="/superadmin" element={<ProtectedRoute allowedRoles={['superadmin', 'sub_superadmin', 'campus_admin', 'course_admin']}><SuperAdminSidebar /></ProtectedRoute>}>
+        {/* Super Admin Routes */}
+        <Route path="/superadmin" element={<ProtectedRoute allowedRoles={['superadmin', 'campus_admin', 'course_admin']}><SuperAdminSidebar /></ProtectedRoute>}>
           <Route index element={<SuperAdminDashboard />} />
-            <Route path="dashboard" element={<SuperAdminDashboard />} />
-
-            <Route path="admin-permissions" element={<AdminPermissions />} />
-            <Route path="global-settings" element={<GlobalSettings />} />
-            <Route path="students" element={<StudentManagement />} />
-            <Route path="results" element={<ResultsManagement />} />
-            <Route path="progress-tracking" element={<ProgressTracking />} />
+          <Route path="dashboard" element={<SuperAdminDashboard />} />
+          <Route path="students" element={<StudentManagement />} />
+          <Route path="results" element={<ResultsManagement />} />
+          <Route path="progress-tracking" element={<ProgressTracking />} />
           <Route path="tests" element={<TestManagement />} />
-            <Route path="tests/create" element={<TestManagement />} />
-            <Route path="question-bank-upload" element={<QuestionBankUpload />} />
-            <Route path="crt-upload" element={<CRTUpload />} />
-            <Route path="sub-superadmin" element={<SubSuperadminManagement />} />
-            <Route path="analytics" element={<ProgressTracking />} />
-            <Route path="real-analytics" element={<RealAnalytics />} />
-            <Route path="profile" element={<SuperAdminProfile />} />
-          </Route>
+          <Route path="tests/create" element={<TestManagement />} />
+          <Route path="question-bank-upload" element={<QuestionBankUpload />} />
+          <Route path="crt-upload" element={<CRTUpload />} />
+          <Route path="profile" element={<SuperAdminProfile />} />
+        </Route>
 
-          {/* Campus Admin Routes */}
+        {/* Campus Admin Routes */}
         <Route path="/campus-admin" element={<ProtectedRoute allowedRoles={['campus_admin']}><CampusAdminSidebar /></ProtectedRoute>}>
           <Route index element={<CampusAdminDashboard />} />
-            <Route path="dashboard" element={<CampusAdminDashboard />} />
-            <Route path="students" element={<CampusStudentManagement />} />
-            <Route path="tests" element={<TestManagement />} />
-            <Route path="results" element={<ResultsManagement />} />
-            <Route path="analytics" element={<CampusReports />} />
-            <Route path="reports" element={<CampusReports />} />
-            <Route path="profile" element={<SuperAdminProfile />} />
-          </Route>
+          <Route path="dashboard" element={<CampusAdminDashboard />} />
+          <Route path="students" element={<CampusStudentManagement />} />
+          <Route path="tests" element={<TestManagement />} />
+          <Route path="results" element={<ResultsManagement />} />
+          <Route path="reports" element={<CampusReports />} />
+          <Route path="profile" element={<SuperAdminProfile />} />
+        </Route>
 
-          {/* Course Admin Routes */}
+        {/* Course Admin Routes */}
         <Route path="/course-admin" element={<ProtectedRoute allowedRoles={['course_admin']}><CourseAdminSidebar /></ProtectedRoute>}>
           <Route index element={<CourseAdminDashboard />} />
-            <Route path="dashboard" element={<CourseAdminDashboard />} />
-            <Route path="students" element={<CourseStudentManagement />} />
-            <Route path="tests" element={<TestManagement />} />
-            <Route path="results" element={<ResultsManagement />} />
-            <Route path="reports" element={<CourseReports />} />
-            <Route path="analytics" element={<StudentProgress />} />
-            <Route path="profile" element={<SuperAdminProfile />} />
-          </Route>
+          <Route path="dashboard" element={<CourseAdminDashboard />} />
+          <Route path="students" element={<CourseStudentManagement />} />
+          <Route path="tests" element={<TestManagement />} />
+          <Route path="results" element={<ResultsManagement />} />
+          <Route path="reports" element={<CourseReports />} />
+          <Route path="progress" element={<StudentProgress />} />
+          <Route path="profile" element={<SuperAdminProfile />} />
+        </Route>
 
         {/* Student Routes */}
         <Route path="/student" element={<ProtectedRoute allowedRoles={['student']}><StudentSidebar /></ProtectedRoute>}>
@@ -170,8 +154,6 @@ function AppContent() {
         {/* Exam Taking Routes - No Sidebar */}
         <Route path="/student/exam" element={<ProtectedRoute allowedRoles={['student']}><OnlineExamTaking /></ProtectedRoute>} />
 
-        {/* Test Routes */}
-
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
@@ -184,13 +166,13 @@ function App() {
     <ErrorBoundary>
       <AuthProvider>
         <PermissionProvider>
-        <DashboardProvider>
-          <NotificationProvider>
-            <FeatureProvider>
-              <AppContent />
-            </FeatureProvider>
-          </NotificationProvider>
-        </DashboardProvider>
+          <DashboardProvider>
+            <NotificationProvider>
+              <FeatureProvider>
+                <AppContent />
+              </FeatureProvider>
+            </NotificationProvider>
+          </DashboardProvider>
         </PermissionProvider>
       </AuthProvider>
     </ErrorBoundary>
