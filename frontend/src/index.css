@@ -238,3 +238,19 @@ body {
 .multi-select .dropdown-heading .dropdown-heading-value .gray-500 {
     color: #6b7280 !important; /* text-gray-500 */
 }
+
+/* Custom horizontal slim scrollbar for module cards inline track */
+.module-scroll-track::-webkit-scrollbar {
+  height: 6px;
+}
+.module-scroll-track::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+}
+.module-scroll-track::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+.module-scroll-track::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

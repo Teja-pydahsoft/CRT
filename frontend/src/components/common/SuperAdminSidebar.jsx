@@ -97,7 +97,7 @@ const SuperAdminSidebar = () => {
     { name: 'Dashboard', path: '/superadmin/dashboard', icon: LayoutDashboard, module: 'dashboard' },
     { name: 'Student Management', path: '/superadmin/students', icon: GraduationCap, module: 'students' },
     { name: 'Test Management', path: '/superadmin/tests', icon: FilePlus, module: 'tests' },
-    { name: 'CRT Upload', path: '/superadmin/crt-upload', icon: FilePlus, module: 'crt_upload' },
+    { name: 'CRT & Versant', path: '/superadmin/crt-upload', icon: FilePlus, module: 'crt_upload' },
     { name: 'Results Management', path: '/superadmin/results', icon: BarChart, module: 'results' },
     { name: 'Progress Tracking', path: '/superadmin/progress-tracking', icon: Activity, module: 'progress_tracking' },
     { name: 'User Management', path: '/superadmin/user-management', icon: Users, module: 'user_management' },

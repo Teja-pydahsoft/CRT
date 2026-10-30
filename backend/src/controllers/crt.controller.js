@@ -29,6 +29,7 @@ const seedDefaultCrtStructure = async () => {
       name: 'Quantitative Aptitude',
       code: 'aptitude',
       description: 'Arithmetic, percentages, profit-loss, time & work, permutations, and probability.',
+      module_type: 'mcq',
       icon: 'Calculator',
       color: 'indigo',
       order: 1,
@@ -74,6 +75,7 @@ const seedDefaultCrtStructure = async () => {
       name: 'Logical Reasoning',
       code: 'reasoning',
       description: 'Syllogisms, blood relations, series completion, coding-decoding, and direction sense.',
+      module_type: 'mcq',
       icon: 'Brain',
       color: 'emerald',
       order: 2,
@@ -119,6 +121,7 @@ const seedDefaultCrtStructure = async () => {
       name: 'Technical & CS',
       code: 'technical',
       description: 'Data structures, algorithms, DBMS/SQL, operating systems, networking, and OOP.',
+      module_type: 'technical',
       icon: 'Code',
       color: 'purple',
       order: 3,
@@ -164,6 +167,7 @@ const seedDefaultCrtStructure = async () => {
       name: 'Verbal Ability & English',
       code: 'verbal',
       description: 'Reading comprehension, sentence correction, vocabulary, idioms, and grammar.',
+      module_type: 'mcq',
       icon: 'BookOpen',
       color: 'amber',
       order: 4,
@@ -202,6 +206,7 @@ const seedDefaultCrtStructure = async () => {
       name: 'Versant & Voice Assessment',
       code: 'versant',
       description: 'Speech-to-Text and Text-to-Speech communication engine: Reading aloud, sentence repetition, listening comprehension and speaking.',
+      module_type: 'dual_voice',
       icon: 'Brain',
       color: 'rose',
       order: 5,
@@ -512,7 +517,7 @@ exports.getModules = async (req, res) => {
  */
 exports.createModule = async (req, res) => {
   try {
-    const { name, code, description, icon, color } = req.body;
+    const { name, code, description, module_type, icon, color } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Module name is required' });
@@ -536,6 +541,7 @@ exports.createModule = async (req, res) => {
       name: name.trim(),
       code: generatedCode,
       description: description ? description.trim() : '',
+      module_type: module_type || 'mcq',
       icon: icon || 'BookOpen',
       color: color || 'indigo',
       topics: [],
@@ -562,7 +568,7 @@ exports.createModule = async (req, res) => {
 exports.updateModule = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, icon, color, is_active } = req.body;
+    const { name, description, module_type, icon, color, is_active } = req.body;
 
     const mod = await CrtModule.findById(id);
     if (!mod) {
@@ -571,6 +577,7 @@ exports.updateModule = async (req, res) => {
 
     if (name && name.trim()) mod.name = name.trim();
     if (description !== undefined) mod.description = description.trim();
+    if (module_type) mod.module_type = module_type;
     if (icon) mod.icon = icon;
     if (color) mod.color = color;
     if (is_active !== undefined) mod.is_active = Boolean(is_active);
