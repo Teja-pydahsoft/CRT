@@ -582,8 +582,8 @@ const OnlineExamTaking = () => {
       const endTime = Date.now();
       const timeTakenMs = startTime ? endTime - startTime : null;
 
-      // Check if this is a listening module that requires audio submission
-      const isListeningModule = exam?.module_id === 'LISTENING' || exam?.module_id === 'SPEAKING';
+      // Check if this is a listening or speaking module that requires audio submission
+      const isListeningModule = exam?.module_id === 'LISTENING' || exam?.module_id === 'SPEAKING' || questions.some(q => q.question_type === 'audio_to_text' || q.conversion_type === 'audio_to_text' || q.conversion_type === 'both');
 
       if (isListeningModule) {
         // Validate that all questions have audio recordings for listening modules
@@ -647,8 +647,13 @@ const OnlineExamTaking = () => {
         });
 
         if (res.data.success) {
-          success('Online listening exam submitted successfully!');
-          navigate('/student/history');
+          success('Speaking & listening exam submitted and evaluated successfully!');
+          const resultId = res.data.data?.resultId || res.data.data?._id;
+          if (resultId) {
+            navigate(`/student/test-result/${resultId}`);
+          } else {
+            navigate('/student/history');
+          }
         } else {
           const msg = res.data.message || '';
           if (isExamClosedByServerMessage(msg)) {
@@ -1476,7 +1481,7 @@ const OnlineExamTaking = () => {
                     )}
 
                   {/* Audio recording interface for listening modules */}
-                  {(currentQuestion.question_type === 'audio' || currentQuestion.audio_url || exam?.module_id === 'LISTENING' || exam?.module_id === 'SPEAKING') && (
+                  {(currentQuestion.question_type === 'audio' || currentQuestion.question_type === 'audio_to_text' || currentQuestion.conversion_type === 'audio_to_text' || currentQuestion.conversion_type === 'both' || currentQuestion.audio_url || exam?.module_id === 'LISTENING' || exam?.module_id === 'SPEAKING') && (
                     <motion.div
                       className="space-y-6"
                       initial={{ opacity: 0 }}

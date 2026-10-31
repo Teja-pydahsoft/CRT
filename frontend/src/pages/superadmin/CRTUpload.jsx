@@ -330,6 +330,13 @@ export default function CRTUpload() {
   const [importFileName, setImportFileName] = useState('');
   const [isImportSubmitting, setIsImportSubmitting] = useState(false);
 
+  // Bulk Sentences (Speaking & Versant Quick Input)
+  const [isBulkSentenceModalOpen, setIsBulkSentenceModalOpen] = useState(false);
+  const [bulkSentenceText, setBulkSentenceText] = useState('');
+  const [bulkSentenceLevel, setBulkSentenceLevel] = useState(1);
+  const [bulkSentenceDuration, setBulkSentenceDuration] = useState(30);
+  const [isBulkSentenceSubmitting, setIsBulkSentenceSubmitting] = useState(false);
+
   const [isModuleModalOpen, setIsModuleModalOpen] = useState(false);
   const [editingModule, setEditingModule] = useState(null);
   const [moduleForm, setModuleForm] = useState({
@@ -824,6 +831,59 @@ export default function CRTUpload() {
       toast.error(err?.response?.data?.message || 'Import failed');
     } finally {
       setIsImportSubmitting(false);
+    }
+  };
+
+  // Bulk Sentences Handler
+  const handleConfirmBulkSentences = async () => {
+    if (!currentModule || !currentTopic) {
+      toast.error('Select a module and topic first');
+      return;
+    }
+    const lines = bulkSentenceText
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 3);
+
+    if (lines.length === 0) {
+      toast.error('Please enter at least one sentence');
+      return;
+    }
+
+    try {
+      setIsBulkSentenceSubmitting(true);
+      const questionsToUpload = lines.map(sentence => ({
+        text: sentence,
+        reference_text: sentence,
+        question_type: 'audio_to_text',
+        conversion_type: 'audio_to_text',
+        time_limit_seconds: parseInt(bulkSentenceDuration, 10) || 30,
+        level_id: parseInt(bulkSentenceLevel, 10) || 1,
+        level_name: `Level ${bulkSentenceLevel || 1}`,
+        options: [],
+        correct_answer: sentence,
+        explanation: 'Read the sentence aloud into your microphone. Graded by AI Whisper speech recognition.'
+      }));
+
+      await bulkUploadCrtQuestions({
+        module_id: currentModule.code,
+        main_module_id: currentModule._id,
+        topic_id: currentTopic._id,
+        subcategory: currentTopic.code || currentTopic.name,
+        level_id: parseInt(bulkSentenceLevel, 10) || 1,
+        level_name: `Level ${bulkSentenceLevel || 1}`,
+        questions: questionsToUpload
+      });
+
+      toast.success(`Successfully added ${lines.length} speaking sentences!`);
+      setIsBulkSentenceModalOpen(false);
+      setBulkSentenceText('');
+      await loadQuestions();
+      await fetchStructure(true);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to upload speaking sentences');
+    } finally {
+      setIsBulkSentenceSubmitting(false);
     }
   };
 
@@ -1461,9 +1521,20 @@ export default function CRTUpload() {
                 />
               </label>
 
+              {/* Quick Paste Sentences (Speaking & Versant) */}
+              <button
+                type="button"
+                onClick={() => setIsBulkSentenceModalOpen(true)}
+                className="inline-flex items-center gap-1.5 bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-2xs transition-colors"
+                title="Paste a list of sentences to auto-create speaking test questions"
+              >
+                <Mic className="w-3.5 h-3.5 text-rose-600" />
+                <span>+ Paste Sentences</span>
+              </button>
+
               {/* Add Question Button (Royal Blue) */}
               <button
-                onClick={() => handleOpenAddDrawer('mcq')}
+                onClick={() => handleOpenAddDrawer()}
                 className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold shadow-2xs transition-all"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -1506,6 +1577,13 @@ export default function CRTUpload() {
               <p className="text-slate-400 text-xs mt-0.5">
                 Click "+ Add Question" or "Upload CSV/Excel" to add questions to this topic.
               </p>
+              <button
+                onClick={() => handleOpenAddDrawer()}
+                className="mt-3 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-2xs transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Add Question</span>
+              </button>
             </div>
           ) : (
             <div className="overflow-x-auto border border-slate-200 rounded-xl">
@@ -1968,12 +2046,14 @@ export default function CRTUpload() {
                       onChange={(e) => setDrawerForm({ ...drawerForm, time_limit_seconds: parseInt(e.target.value, 10) })}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold"
                     >
-                      <option value={15}>15 Seconds</option>
-                      <option value={25}>25 Seconds</option>
-                      <option value={30}>30 Seconds (Default)</option>
-                      <option value={45}>45 Seconds</option>
-                      <option value={60}>60 Seconds</option>
-                      <option value={90}>90 Seconds</option>
+                      <option value={15}>15 Seconds (Rapid Versant / Short Answer)</option>
+                      <option value={25}>25 Seconds (Versant Repeat Sentence)</option>
+                      <option value={30}>30 Seconds (Standard MCQ / Speaking Default)</option>
+                      <option value={45}>45 Seconds (Reading Aloud / Comprehension)</option>
+                      <option value={60}>60 Seconds (1 Minute - Analytical MCQ)</option>
+                      <option value={90}>90 Seconds (1.5 Minutes - Long Passage)</option>
+                      <option value={120}>120 Seconds (2 Minutes - Technical Challenge)</option>
+                      <option value={300}>300 Seconds (5 Minutes - Complex Coding Algorithm)</option>
                     </select>
                   </div>
 
@@ -2098,6 +2178,127 @@ export default function CRTUpload() {
                       {isImportSubmitting ? 'Importing...' : `Confirm & Import (${parsedImportRows.length})`}
                     </button>
                   )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ============================================================= */}
+      {/* MODAL: BULK ADD SENTENCES (SPEAKING & VERSANT)                 */}
+      {/* ============================================================= */}
+      <AnimatePresence>
+        {isBulkSentenceModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl max-w-xl w-full p-6 border border-slate-200 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+                    <Mic className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">
+                      Quick Add Sentences List
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Paste sentences to create speaking test questions with Whisper AI scoring
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsBulkSentenceModalOpen(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      Target Level *
+                    </label>
+                    <select
+                      value={bulkSentenceLevel}
+                      onChange={(e) => setBulkSentenceLevel(parseInt(e.target.value, 10))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold"
+                    >
+                      {(currentTopic?.levels || []).map(lvl => (
+                        <option key={lvl.level} value={lvl.level}>
+                          Level {lvl.level} - {lvl.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      Speaking Time Limit *
+                    </label>
+                    <select
+                      value={bulkSentenceDuration}
+                      onChange={(e) => setBulkSentenceDuration(parseInt(e.target.value, 10))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold"
+                    >
+                      <option value={15}>15 Seconds (Rapid Versant)</option>
+                      <option value={25}>25 Seconds (Short Sentences)</option>
+                      <option value={30}>30 Seconds (Default)</option>
+                      <option value={45}>45 Seconds (Paragraphs / Long Sentences)</option>
+                      <option value={60}>60 Seconds</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700 uppercase">
+                      Paste Sentences List (One Per Line) *
+                    </label>
+                    <span className="text-[11px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100">
+                      {bulkSentenceText.split('\n').map(s => s.trim()).filter(s => s.length > 3).length} Sentences Detected
+                    </span>
+                  </div>
+                  <textarea
+                    rows={8}
+                    value={bulkSentenceText}
+                    onChange={(e) => setBulkSentenceText(e.target.value)}
+                    placeholder={`Traffic congestion has become a major challenge for modern urban cities worldwide.\nArtificial intelligence and machine learning are revolutionizing software development.\nPlease leave your visitor badge at the reception desk before departing.\nThe flight to Chicago has been delayed by approximately forty-five minutes.`}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium font-mono text-slate-800 focus:outline-none focus:bg-white focus:ring-1 focus:ring-rose-500 leading-relaxed"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Each sentence is automatically saved as a reference text for Whisper AI pronunciation and fluency scoring.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsBulkSentenceModalOpen(false)}
+                    className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmBulkSentences}
+                    disabled={isBulkSentenceSubmitting || !bulkSentenceText.trim()}
+                    className="px-5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-2xs flex items-center gap-1.5"
+                  >
+                    <Mic className="w-3.5 h-3.5" />
+                    <span>
+                      {isBulkSentenceSubmitting
+                        ? 'Creating Questions...'
+                        : `Import Sentences (${bulkSentenceText.split('\n').map(s => s.trim()).filter(s => s.length > 3).length})`}
+                    </span>
+                  </button>
                 </div>
               </div>
             </motion.div>

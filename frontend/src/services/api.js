@@ -572,4 +572,13 @@ export const generateCrtTTSPreview = async (data) => {
   return api.post('/crt/tts-preview', data);
 };
 
+export const submitSpeakingExam = async (testId, payload) => {
+  if (payload instanceof FormData) {
+    return api.post('/test-management/submit-online-listening-test', payload, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
+  return api.post(`/student/tests/${testId}/submit-speaking`, payload);
+};
+
 export default api;

@@ -22,6 +22,11 @@ router.post('/upload-questions', upload.single('file'), testController.uploadQue
 router.post('/create-test-from-bank', testController.createTestFromBank);
 router.post('/submit-practice-test', upload.single('audio'), testController.submitPracticeTest);
 
+// Multi-question Speaking & Versant Online Exam Submission
+router.post('/submit-online-listening-test', upload.any(), testController.submitSpeakingExam);
+router.post('/submit-speaking-test', upload.any(), testController.submitSpeakingExam);
+router.post('/tests/:id/submit-speaking', upload.any(), testController.submitSpeakingExam);
+
 // 1-to-1 Audio <-> Text Conversion API endpoints
 router.post('/transcribe-audio', upload.single('audio'), testController.transcribeAudio);
 router.post('/audio-to-text', upload.single('audio'), testController.transcribeAudio);

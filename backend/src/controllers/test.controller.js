@@ -360,3 +360,183 @@ exports.generateTTS = async (req, res) => {
   }
 };
 
+
+
+/**
+ * Submit and Grade Multi-question Speaking / Listening Exam
+ * Receives multiple student audio recordings, transcribes via Whisper, grades via aiService
+ */
+exports.submitSpeakingExam = async (req, res) => {
+  try {
+    const testId = req.params.id || req.body.test_id;
+    const userId = req.user ? (req.user.id || req.user._id) : null;
+    const studentDoc = userId ? await Student.findOne({ user_id: userId }) : null;
+
+    let test = null;
+    let questions = [];
+
+    if (testId) {
+      test = await Test.findById(testId);
+      if (test && Array.isArray(test.questions) && test.questions.length > 0) {
+        questions = test.questions;
+      }
+    }
+
+    // Fallback: if questions passed in request body
+    if (questions.length === 0 && req.body.questions) {
+      try {
+        questions = typeof req.body.questions === 'string' ? JSON.parse(req.body.questions) : req.body.questions;
+      } catch (e) {
+        questions = [];
+      }
+    }
+
+    const files = req.files || [];
+    const base64Recordings = req.body.recordings ? (typeof req.body.recordings === 'string' ? JSON.parse(req.body.recordings) : req.body.recordings) : {};
+    const textAnswers = req.body.answers ? (typeof req.body.answers === 'string' ? JSON.parse(req.body.answers) : req.body.answers) : {};
+
+    const evaluatedQuestions = [];
+    let totalScoreSum = 0;
+    let totalAccuracySum = 0;
+    let totalFluencySum = 0;
+    let totalCompletenessSum = 0;
+
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      const qKey = q._id || q.id || q.question_id || i;
+      const refText = String(q.reference_text || q.text || q.sentence || q.prompt || '').trim();
+
+      // Find matching audio file or base64
+      let audioBuffer = null;
+      let filename = `answer_${qKey}.wav`;
+
+      const matchedFile = files.find(f => 
+        f.fieldname === `question_${qKey}` || 
+        f.fieldname === `answer_${qKey}` || 
+        f.fieldname === `file_${i}` || 
+        f.fieldname === `audio_${i}` ||
+        f.fieldname.includes(String(qKey)) ||
+        f.fieldname.includes(String(i))
+      );
+
+      if (matchedFile && matchedFile.buffer) {
+        audioBuffer = matchedFile.buffer;
+        filename = matchedFile.originalname || filename;
+      } else if (base64Recordings[qKey] || base64Recordings[i]) {
+        const b64 = base64Recordings[qKey] || base64Recordings[i];
+        if (typeof b64 === 'string') {
+          const cleanB64 = b64.replace(/^data:audio\/\w+;base64,/, '');
+          audioBuffer = Buffer.from(cleanB64, 'base64');
+        }
+      } else if (req.body[`question_${qKey}`] && typeof req.body[`question_${qKey}`] === 'string' && req.body[`question_${qKey}`].startsWith('data:audio')) {
+        const cleanB64 = req.body[`question_${qKey}`].replace(/^data:audio\/\w+;base64,/, '');
+        audioBuffer = Buffer.from(cleanB64, 'base64');
+      }
+
+      let transcription = '';
+      let evalData = null;
+
+      if (audioBuffer && audioBuffer.length > 0) {
+        try {
+          const transcribeRes = await aiService.transcribeAudio(audioBuffer, filename);
+          transcription = transcribeRes.transcription || transcribeRes.text || '';
+          evalData = aiService.evaluatePronunciation(refText, transcription);
+        } catch (err) {
+          console.error(`[Speaking Grading Error] Q${i}:`, err.message);
+          evalData = aiService.evaluatePronunciation(refText, '');
+        }
+      } else {
+        const textAns = textAnswers[qKey] || req.body[`question_${qKey}`] || '';
+        if (textAns && typeof textAns === 'string' && !textAns.startsWith('data:audio')) {
+          transcription = textAns;
+          evalData = aiService.evaluatePronunciation(refText, textAns);
+        } else {
+          evalData = {
+            accuracy_score: 0,
+            fluency_score: 0,
+            completeness_score: 0,
+            overall_score: 0,
+            word_feedback: []
+          };
+        }
+      }
+
+      const qAccuracy = evalData.accuracy_score || 0;
+      const qFluency = evalData.fluency_score || 0;
+      const qCompleteness = evalData.completeness_score || 0;
+      const qOverall = evalData.overall_score || 0;
+
+      totalScoreSum += qOverall;
+      totalAccuracySum += qAccuracy;
+      totalFluencySum += qFluency;
+      totalCompletenessSum += qCompleteness;
+
+      evaluatedQuestions.push({
+        question_id: qKey,
+        question_index: i + 1,
+        sentence: refText,
+        reference_text: refText,
+        prompt: q.text || refText,
+        transcription: transcription,
+        accuracy_score: qAccuracy,
+        fluency_score: qFluency,
+        completeness_score: qCompleteness,
+        overall_score: qOverall,
+        word_feedback: evalData.word_feedback || [],
+        passed: qOverall >= 60
+      });
+    }
+
+    const count = Math.max(questions.length, 1);
+    const avgScore = Math.round(totalScoreSum / count);
+    const avgAccuracy = Math.round(totalAccuracySum / count);
+    const avgFluency = Math.round(totalFluencySum / count);
+    const avgCompleteness = Math.round(totalCompletenessSum / count);
+
+    const result = new Result({
+      student_id: studentDoc ? studentDoc._id : userId,
+      user_id: userId,
+      test_id: test ? test._id : null,
+      module_id: test?.module_id || req.body.module_id || 'SPEAKING',
+      score: avgScore,
+      percentage: avgScore,
+      total_questions: questions.length,
+      answers: evaluatedQuestions,
+      transcription: evaluatedQuestions.map(eq => eq.transcription).filter(Boolean).join(' | '),
+      ai_evaluation: {
+        accuracy_score: avgAccuracy,
+        fluency_score: avgFluency,
+        overall_score: avgScore,
+        pronunciation_breakdown: {
+          completeness_score: avgCompleteness,
+          questions: evaluatedQuestions
+        }
+      },
+      submitted_at: new Date()
+    });
+
+    if (userId) {
+      await result.save();
+    }
+
+    return res.json({
+      success: true,
+      message: 'Speaking assessment submitted and evaluated successfully',
+      data: {
+        resultId: result._id,
+        score: avgScore,
+        percentage: avgScore,
+        accuracy_score: avgAccuracy,
+        fluency_score: avgFluency,
+        completeness_score: avgCompleteness,
+        totalQuestions: questions.length,
+        evaluatedCount: evaluatedQuestions.length,
+        answers: evaluatedQuestions,
+        ai_evaluation: result.ai_evaluation
+      }
+    });
+  } catch (error) {
+    console.error('[submitSpeakingExam Error]:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

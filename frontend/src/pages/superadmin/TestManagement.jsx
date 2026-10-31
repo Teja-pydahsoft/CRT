@@ -611,9 +611,11 @@ function CreateTestWizardModal({ onClose, onTestCreated }) {
     e.target.value = '';
   };
 
-  // Row Parser Helper
+  // Row Parser Helper (Supports both MCQ and Speaking Sentences)
   const parseRowsToQuestions = (rows) => {
     const result = [];
+    const isSpeakingTest = String(moduleId || '').toUpperCase().includes('SPEAKING');
+
     rows.forEach((row, idx) => {
       const qText = row.question || row.text || row.Question || row.QUESTION || row['Question Text'];
       if (!qText) return;
@@ -624,14 +626,19 @@ function CreateTestWizardModal({ onClose, onTestCreated }) {
       const optD = row.option_d || row.option4 || row['Option D'] || row.D || '';
       const options = [optA, optB, optC, optD].filter(Boolean);
 
-      const correctAns = row.correct_answer || row.answer || row.CorrectAnswer || row.Answer || optA;
+      const isSpeakingRow = isSpeakingTest || !!row.reference_text || options.length === 0;
+      const refText = row.reference_text || (isSpeakingRow ? String(qText).trim() : '');
+      const correctAns = row.correct_answer || row.answer || row.CorrectAnswer || row.Answer || (isSpeakingRow ? refText : optA);
 
       result.push({
         id: `upload_${Date.now()}_${idx}`,
         text: String(qText).trim(),
-        options: options.length >= 2 ? options : ['Option A', 'Option B', 'Option C', 'Option D'],
+        reference_text: refText,
+        options: options.length >= 2 ? options : [],
         correct_answer: String(correctAns).trim(),
-        question_type: 'mcq',
+        question_type: isSpeakingRow ? 'audio_to_text' : 'mcq',
+        conversion_type: isSpeakingRow ? 'audio_to_text' : 'none',
+        time_limit_seconds: isSpeakingRow ? 30 : 60,
         subcategory: subcategory
       });
     });

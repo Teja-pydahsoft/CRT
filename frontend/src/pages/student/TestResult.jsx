@@ -258,6 +258,110 @@ const TestResult = () => {
                 </motion.div>
               </div>
 
+              {/* AI Speaking & Pronunciation Performance Card */}
+              {result.ai_evaluation && (
+                <div className="mb-8 p-6 bg-gradient-to-r from-indigo-50/70 via-blue-50/50 to-purple-50/70 rounded-2xl border-2 border-indigo-200 shadow-sm space-y-5">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider bg-white px-2.5 py-1 rounded-full border border-indigo-200">
+                        AI Speech Model Evaluation (Whisper AI)
+                      </span>
+                      <h3 className="text-xl font-extrabold text-slate-900 mt-1">Speaking & Pronunciation Breakdown</h3>
+                    </div>
+                    <span className="text-sm font-bold text-slate-700 bg-white px-3 py-1.5 rounded-xl border border-slate-200">
+                      Overall Score: <strong className="text-indigo-600 text-base">{result.ai_evaluation.overall_score || result.score}%</strong>
+                    </span>
+                  </div>
+
+                  {/* 3 Metric Pills */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-2xs">
+                      <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1">
+                        <span>Pronunciation Accuracy</span>
+                        <span className="font-bold text-indigo-600">{result.ai_evaluation.accuracy_score || 0}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-indigo-600 rounded-full transition-all" style={{ width: `${result.ai_evaluation.accuracy_score || 0}%` }}></div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-2xs">
+                      <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1">
+                        <span>Speaking Fluency</span>
+                        <span className="font-bold text-blue-600">{result.ai_evaluation.fluency_score || 0}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-blue-600 rounded-full transition-all" style={{ width: `${result.ai_evaluation.fluency_score || 0}%` }}></div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-2xs">
+                      <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1">
+                        <span>Sentence Completeness</span>
+                        <span className="font-bold text-emerald-600">
+                          {result.ai_evaluation.pronunciation_breakdown?.completeness_score || result.ai_evaluation.accuracy_score || 0}%
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-600 rounded-full transition-all"
+                          style={{ width: `${result.ai_evaluation.pronunciation_breakdown?.completeness_score || result.ai_evaluation.accuracy_score || 0}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sentence-by-Sentence Breakdown if available in answers */}
+                  {Array.isArray(result.answers) && result.answers.length > 0 && result.answers[0]?.sentence && (
+                    <div className="space-y-3 pt-2">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        Per-Sentence Spoken Analysis
+                      </h4>
+                      <div className="space-y-2.5">
+                        {result.answers.map((ans, aIdx) => (
+                          <div key={aIdx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-slate-500">Sentence {aIdx + 1}</span>
+                              <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                Score: {ans.overall_score || ans.accuracy_score}%
+                              </span>
+                            </div>
+
+                            <div>
+                              <span className="text-[10px] font-bold uppercase text-slate-400 block">Target Sentence:</span>
+                              <p className="text-xs font-bold text-slate-900">{ans.sentence || ans.reference_text}</p>
+                            </div>
+
+                            <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                              <span className="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">What AI Transcribed:</span>
+                              <p className="text-xs font-medium text-slate-700 italic">
+                                "{ans.transcription || 'No speech detected'}"
+                              </p>
+                              {Array.isArray(ans.word_feedback) && ans.word_feedback.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {ans.word_feedback.map((wf, wIdx) => (
+                                    <span
+                                      key={wIdx}
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                        wf.matched
+                                          ? 'bg-emerald-100 text-emerald-800'
+                                          : 'bg-rose-100 text-rose-800 line-through'
+                                      }`}
+                                    >
+                                      {wf.word}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Detailed Results */}
               <div className="bg-white rounded-xl shadow-lg border border-gray-200">
                 <div className="p-6 border-b border-gray-200">

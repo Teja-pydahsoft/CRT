@@ -108,7 +108,9 @@ class AIService {
         success: false,
         accuracy_score: 0,
         fluency_score: 0,
+        completeness_score: 0,
         overall_score: 0,
+        word_feedback: [],
         evaluation: { pronunciation: 0, fluency: 0, completeness: 0 }
       };
     }
@@ -117,12 +119,21 @@ class AIService {
     const refWords = clean(referenceText).split(/\s+/).filter(Boolean);
     const transWords = clean(transcribedText).split(/\s+/).filter(Boolean);
 
-    const matches = transWords.filter(w => refWords.includes(w)).length;
+    // Track which reference words were spoken correctly (with soft prefix matching for plurals/stems)
+    const wordFeedback = refWords.map(word => {
+      const isMatched = transWords.some(tw => tw === word || (word.length > 4 && (tw.startsWith(word.slice(0, 4)) || word.startsWith(tw.slice(0, 4)))));
+      return {
+        word,
+        matched: isMatched
+      };
+    });
+
+    const matches = wordFeedback.filter(w => w.matched).length;
     const total = Math.max(refWords.length, 1);
 
-    const accuracyScore = Math.round((matches / total) * 100);
-    const fluencyScore = Math.min(100, Math.round((transWords.length / total) * 90));
-    const completenessScore = Math.min(100, Math.round((transWords.length / total) * 100));
+    const accuracyScore = Math.min(100, Math.round((matches / total) * 100));
+    const fluencyScore = Math.min(100, Math.round(Math.min(transWords.length / total, 1.1) * 90));
+    const completenessScore = Math.min(100, Math.round((matches / total) * 100));
     const overallScore = Math.round((accuracyScore * 0.6) + (fluencyScore * 0.4));
 
     return {
@@ -131,7 +142,9 @@ class AIService {
       transcribed_text: transcribedText,
       accuracy_score: accuracyScore,
       fluency_score: fluencyScore,
+      completeness_score: completenessScore,
       overall_score: overallScore,
+      word_feedback: wordFeedback,
       evaluation: {
         pronunciation: accuracyScore,
         fluency: fluencyScore,
