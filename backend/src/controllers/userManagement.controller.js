@@ -272,7 +272,14 @@ exports.linkHRMSUser = async (req, res) => {
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { role_id, role, permissions, status } = req.body;
+    const {
+      role_id,
+      role,
+      permissions,
+      status,
+      sdms_college_id: sdmsCollegeId,
+      sdms_course_id: sdmsCourseId
+    } = req.body;
 
     const user = await User.findById(id);
     if (!user) {
@@ -295,6 +302,22 @@ exports.updateUser = async (req, res) => {
 
     if (status !== undefined) {
       user.status = status;
+    }
+
+    for (const [field, value] of [
+      ['sdms_college_id', sdmsCollegeId],
+      ['sdms_course_id', sdmsCourseId]
+    ]) {
+      if (value === undefined) continue;
+      if (value === null || value === '') {
+        user[field] = null;
+        continue;
+      }
+      const numericId = Number(value);
+      if (!Number.isSafeInteger(numericId) || numericId <= 0) {
+        return res.status(400).json({ success: false, message: `${field} must be a positive integer or empty.` });
+      }
+      user[field] = numericId;
     }
 
     user.updated_at = new Date();
@@ -549,4 +572,3 @@ exports.getHRMSDepartments = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-

@@ -23,14 +23,13 @@ const CourseAdminDashboard = () => {
   const fetchDashboardStats = async () => {
     try {
       setLoading(true);
-      // Use the unified superadmin dashboard endpoint
-      const response = await api.get(`/superadmin/dashboard?course_id=${user?.course_id || ''}`);
+      const response = await api.get('/course-admin/dashboard');
       if (response.data.success) {
-        const { total_students, total_tests, total_batches } = response.data.data.statistics;
+        const { totalStudents, totalTests } = response.data.data;
         setStats({
-          totalStudents: total_students || 0,
-          totalTests: total_tests || 0,
-          totalBatches: total_batches || 0,
+          totalStudents: totalStudents || 0,
+          totalTests: totalTests || 0,
+          totalBatches: 0,
         });
       }
     } catch (error) {
@@ -47,7 +46,7 @@ const CourseAdminDashboard = () => {
       value: stats.totalStudents,
       icon: Users,
       color: 'from-blue-500 to-blue-400',
-      path: '/course-admin/student-upload'
+      path: '/course-admin/students'
     },
     {
       title: 'Total Tests',

@@ -2,9 +2,23 @@ const Test = require('../models/Test');
 const Question = require('../models/Question');
 const Result = require('../models/Result');
 const Student = require('../models/Student');
+const ExamAttempt = require('../models/ExamAttempt');
 const s3Service = require('../services/s3.service');
 const aiService = require('../services/ai.service');
 const questionBankService = require('../services/questionBank.service');
+const sdmsService = require('../services/sdms.service');
+const { testIncludesSdmsScope } = require('../services/sdmsTestScope.service');
+
+const getResultIdentity = (req) => {
+  if (req.user.auth_source === 'sdms') {
+    return { user_id: null, student_id: null, sdms_student_id: req.user.sdms_student_id };
+  }
+  return {
+    user_id: req.user.id || req.user._id,
+    student_id: req.user.id || req.user._id,
+    sdms_student_id: null
+  };
+};
 
 exports.getModules = async (req, res) => {
   return res.json({
@@ -65,6 +79,12 @@ exports.createOnlineTest = async (req, res) => {
       endDateTime,
       target_campus_ids,
       target_batch_ids,
+      target_college_ids,
+      target_course_ids,
+      target_branch_ids,
+      target_years,
+      target_semesters,
+      target_sections,
       questions,
       test_type
     } = req.body;
@@ -75,6 +95,33 @@ exports.createOnlineTest = async (req, res) => {
 
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
       return res.status(400).json({ success: false, message: 'At least one question is required' });
+    }
+
+    const targetCollegeIds = Array.isArray(target_college_ids) ? target_college_ids.map(Number) : [];
+    const targetCourseIds = Array.isArray(target_course_ids) ? target_course_ids.map(Number) : [];
+    if (
+      (Array.isArray(target_campus_ids) && target_campus_ids.length) ||
+      (Array.isArray(target_batch_ids) && target_batch_ids.length)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Online exams must target SDMS colleges, courses, branches, years, semesters, and sections.'
+      });
+    }
+    if ([...targetCollegeIds, ...targetCourseIds].some((id) => !Number.isSafeInteger(id) || id <= 0)) {
+      return res.status(400).json({ success: false, message: 'SDMS target IDs must be positive integers.' });
+    }
+    if (req.sdmsScope?.collegeId) {
+      if (targetCollegeIds.some((id) => id !== req.sdmsScope.collegeId)) {
+        return res.status(403).json({ success: false, message: 'You cannot create an exam outside your assigned SDMS college.' });
+      }
+      targetCollegeIds.splice(0, targetCollegeIds.length, req.sdmsScope.collegeId);
+    }
+    if (req.sdmsScope?.courseId) {
+      if (targetCourseIds.some((id) => id !== req.sdmsScope.courseId)) {
+        return res.status(403).json({ success: false, message: 'You cannot create an exam outside your assigned SDMS course.' });
+      }
+      targetCourseIds.splice(0, targetCourseIds.length, req.sdmsScope.courseId);
     }
 
     const test = new Test({
@@ -88,6 +135,12 @@ exports.createOnlineTest = async (req, res) => {
       endDateTime: endDateTime ? new Date(endDateTime) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       target_campus_ids: Array.isArray(target_campus_ids) ? target_campus_ids : [],
       target_batch_ids: Array.isArray(target_batch_ids) ? target_batch_ids : [],
+      target_college_ids: targetCollegeIds,
+      target_course_ids: targetCourseIds,
+      target_branch_ids: Array.isArray(target_branch_ids) ? target_branch_ids.map(Number) : [],
+      target_years: Array.isArray(target_years) ? target_years.map(Number) : [],
+      target_semesters: Array.isArray(target_semesters) ? target_semesters.map(Number) : [],
+      target_sections: Array.isArray(target_sections) ? target_sections.map(String) : [],
       questions: questions,
       status: 'active',
       created_by: req.user ? (req.user.id || req.user._id) : null
@@ -111,10 +164,21 @@ exports.createOnlineTest = async (req, res) => {
 exports.deleteTest = async (req, res) => {
   try {
     const { id } = req.params;
-    const deleted = await Test.findByIdAndDelete(id);
-    if (!deleted) {
+    const test = await Test.findById(id);
+    if (!test) {
       return res.status(404).json({ success: false, message: 'Test not found' });
     }
+    if (req.user.role !== 'superadmin') {
+      const scope = req.sdmsScope || {};
+      if (
+        !testIncludesSdmsScope(test, scope) ||
+        (scope.collegeId && !(test.target_college_ids || []).map(Number).includes(scope.collegeId)) ||
+        (scope.courseId && !(test.target_course_ids || []).map(Number).includes(scope.courseId))
+      ) {
+        return res.status(403).json({ success: false, message: 'This test is outside your management scope.' });
+      }
+    }
+    await Test.deleteOne({ _id: test._id });
     return res.json({ success: true, message: 'Test deleted successfully' });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -126,32 +190,19 @@ exports.deleteTest = async (req, res) => {
  */
 exports.getStudentCount = async (req, res) => {
   try {
-    const { campus, batches } = req.body;
-    const filter = {};
-
-    if (campus && campus !== 'all') {
-      filter.campus_id = campus;
-    }
-    if (batches && Array.isArray(batches) && batches.length > 0 && !batches.includes('all')) {
-      filter.batch_id = { $in: batches };
-    }
-
-    let count = 0;
-    try {
-      count = await Student.countDocuments(filter);
-    } catch {
-      count = 0;
-    }
-
-    if (count === 0) {
-      count = batches && batches.length ? batches.length * 45 : 120;
-    }
-
-    return res.json({
-      success: true,
-      count,
-      students: []
+    const result = await sdmsService.getFilteredStudents({
+      collegeId: req.sdmsScope?.collegeId || req.body.college_id || null,
+      courseId: req.sdmsScope?.courseId || req.body.course_id || null,
+      branchId: req.body.branch_id || null,
+      year: req.body.year || null,
+      semester: req.body.semester || null,
+      section: req.body.section || null,
+      page: 1,
+      limit: 1,
+      includePhoto: false,
+      loginEnabledOnly: true
     });
+    return res.json({ success: true, source: 'rds', count: result.pagination.total });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -208,7 +259,34 @@ exports.createTestFromBank = async (req, res) => {
 
 exports.getAllTests = async (req, res) => {
   try {
-    const tests = await Test.find().sort({ created_at: -1 }).lean();
+    const scope = req.sdmsScope || {};
+    const andConditions = [];
+    if (req.user.role !== 'superadmin') {
+      for (const [field, value] of [
+        ['target_college_ids', scope.collegeId],
+        ['target_course_ids', scope.courseId]
+      ]) {
+        if (value) {
+          andConditions.push({
+            $or: [
+              { [field]: value },
+              { [field]: { $size: 0 } },
+              { [field]: { $exists: false } }
+            ]
+          });
+        }
+      }
+      for (const field of ['target_campus_ids', 'target_batch_ids']) {
+        andConditions.push({
+          $or: [
+            { [field]: { $size: 0 } },
+            { [field]: { $exists: false } }
+          ]
+        });
+      }
+    }
+    const filter = andConditions.length ? { $and: andConditions } : {};
+    const tests = await Test.find(filter).sort({ created_at: -1 }).lean();
     const formatted = tests.map(t => ({
       ...t,
       question_count: Array.isArray(t.questions) ? t.questions.length : 0
@@ -261,11 +339,14 @@ exports.submitPracticeTest = async (req, res) => {
       score = aiEval.overall_score;
     }
 
-    const studentDoc = await Student.findOne({ user_id: req.user.id || req.user._id });
+    const resultIdentity = getResultIdentity(req);
+    const studentDoc = resultIdentity.sdms_student_id
+      ? null
+      : await Student.findOne({ user_id: req.user.id || req.user._id });
 
     const result = new Result({
-      student_id: studentDoc ? studentDoc._id : (req.user.id || req.user._id),
-      user_id: req.user.id || req.user._id,
+      ...resultIdentity,
+      student_id: studentDoc ? studentDoc._id : resultIdentity.student_id,
       test_id: test_id || null,
       module_id: module_id || 'speaking',
       score: score,
@@ -367,9 +448,15 @@ exports.generateTTS = async (req, res) => {
  * Receives multiple student audio recordings, transcribes via Whisper, grades via aiService
  */
 exports.submitSpeakingExam = async (req, res) => {
+  let claimedAttempt = null;
   try {
     const testId = req.params.id || req.body.test_id;
-    const userId = req.user ? (req.user.id || req.user._id) : null;
+    const timeTakenMs = req.body.time_taken_ms;
+    const resultIdentity = req.user ? getResultIdentity(req) : null;
+    const userId = req.user?.auth_source === 'sdms' ? null : (req.user ? (req.user.id || req.user._id) : null);
+    const attemptIdentity = req.user?.auth_source === 'sdms'
+      ? { sdms_student_id: req.user.sdms_student_id }
+      : { user_id: userId };
     const studentDoc = userId ? await Student.findOne({ user_id: userId }) : null;
 
     let test = null;
@@ -377,18 +464,43 @@ exports.submitSpeakingExam = async (req, res) => {
 
     if (testId) {
       test = await Test.findById(testId);
-      if (test && Array.isArray(test.questions) && test.questions.length > 0) {
-        questions = test.questions;
+      if (!test) return res.status(404).json({ success: false, message: 'Test not found' });
+      questions = Array.isArray(test.questions) ? test.questions : [];
+
+      const attemptId = req.body.attempt_id;
+      claimedAttempt = await ExamAttempt.findOneAndUpdate(
+        {
+          _id: attemptId,
+          ...attemptIdentity,
+          test_id: test._id,
+          status: 'in_progress',
+          expires_at: { $gte: new Date() }
+        },
+        { $set: { status: 'submitting' } },
+        { new: true }
+      );
+      if (!claimedAttempt) {
+        return res.status(409).json({
+          success: false,
+          message: 'The exam attempt is missing, expired, or already submitted.'
+        });
       }
     }
 
     // Fallback: if questions passed in request body
-    if (questions.length === 0 && req.body.questions) {
+    if (!test && questions.length === 0 && req.body.questions) {
       try {
         questions = typeof req.body.questions === 'string' ? JSON.parse(req.body.questions) : req.body.questions;
-      } catch (e) {
-        questions = [];
+      } catch {
+        return res.status(400).json({ success: false, message: 'Questions must be valid JSON.' });
       }
+    }
+    if (!Array.isArray(questions) || questions.length === 0) {
+      if (claimedAttempt) {
+        await ExamAttempt.updateOne({ _id: claimedAttempt._id, status: 'submitting' }, { $set: { status: 'in_progress' } });
+        claimedAttempt = null;
+      }
+      return res.status(400).json({ success: false, message: 'This assessment has no questions to grade.' });
     }
 
     const files = req.files || [];
@@ -403,20 +515,18 @@ exports.submitSpeakingExam = async (req, res) => {
 
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
-      const qKey = q._id || q.id || q.question_id || i;
+      const qKey = q.question_id ?? q._id ?? q.id ?? i;
       const refText = String(q.reference_text || q.text || q.sentence || q.prompt || '').trim();
 
       // Find matching audio file or base64
       let audioBuffer = null;
       let filename = `answer_${qKey}.wav`;
 
-      const matchedFile = files.find(f => 
+      const matchedFile = files.find(f =>
         f.fieldname === `question_${qKey}` || 
         f.fieldname === `answer_${qKey}` || 
         f.fieldname === `file_${i}` || 
-        f.fieldname === `audio_${i}` ||
-        f.fieldname.includes(String(qKey)) ||
-        f.fieldname.includes(String(i))
+        f.fieldname === `audio_${i}`
       );
 
       if (matchedFile && matchedFile.buffer) {
@@ -435,16 +545,40 @@ exports.submitSpeakingExam = async (req, res) => {
 
       let transcription = '';
       let evalData = null;
+      const needsSpeechRecording =
+        String(test?.module_id || '').toUpperCase() === 'SPEAKING' ||
+        q.question_type === 'audio_to_text' ||
+        q.question_type === 'audio_interactive' ||
+        q.conversion_type === 'audio_to_text' ||
+        q.conversion_type === 'both';
 
-      if (audioBuffer && audioBuffer.length > 0) {
-        try {
-          const transcribeRes = await aiService.transcribeAudio(audioBuffer, filename);
-          transcription = transcribeRes.transcription || transcribeRes.text || '';
-          evalData = aiService.evaluatePronunciation(refText, transcription);
-        } catch (err) {
-          console.error(`[Speaking Grading Error] Q${i}:`, err.message);
-          evalData = aiService.evaluatePronunciation(refText, '');
+      if (needsSpeechRecording && audioBuffer && audioBuffer.length > 0) {
+        const transcribeRes = await aiService.transcribeAudio(audioBuffer, filename);
+        if (transcribeRes.success === false) {
+          const error = new Error(`Speech transcription failed for question ${i + 1}.`);
+          error.statusCode = 503;
+          throw error;
         }
+        transcription = transcribeRes.transcription || transcribeRes.text || '';
+        evalData = aiService.evaluatePronunciation(refText, transcription);
+      } else if (needsSpeechRecording && test) {
+        const error = new Error(`An audio recording is required for question ${i + 1}.`);
+        error.statusCode = 400;
+        throw error;
+      } else if (test) {
+        const studentAnswer = textAnswers[qKey] || req.body[`question_${qKey}`] || '';
+        const correctAnswer = q.correct_answer;
+        const isCorrect = studentAnswer !== '' && correctAnswer !== undefined &&
+          String(studentAnswer).trim().toLowerCase() === String(correctAnswer).trim().toLowerCase();
+        const mcqScore = isCorrect ? 100 : 0;
+        evalData = {
+          accuracy_score: mcqScore,
+          fluency_score: mcqScore,
+          completeness_score: mcqScore,
+          overall_score: mcqScore,
+          word_feedback: []
+        };
+        transcription = String(studentAnswer);
       } else {
         const textAns = textAnswers[qKey] || req.body[`question_${qKey}`] || '';
         if (textAns && typeof textAns === 'string' && !textAns.startsWith('data:audio')) {
@@ -474,6 +608,12 @@ exports.submitSpeakingExam = async (req, res) => {
       evaluatedQuestions.push({
         question_id: qKey,
         question_index: i + 1,
+        question_text: refText,
+        question_type: q.question_type || (needsSpeechRecording ? 'speaking' : 'mcq'),
+        student_answer: transcription,
+        is_correct: qOverall >= 60,
+        marks_obtained: qOverall,
+        max_marks: 100,
         sentence: refText,
         reference_text: refText,
         prompt: q.text || refText,
@@ -489,17 +629,24 @@ exports.submitSpeakingExam = async (req, res) => {
 
     const count = Math.max(questions.length, 1);
     const avgScore = Math.round(totalScoreSum / count);
+    const correctCount = evaluatedQuestions.filter((answer) => answer.is_correct).length;
     const avgAccuracy = Math.round(totalAccuracySum / count);
     const avgFluency = Math.round(totalFluencySum / count);
     const avgCompleteness = Math.round(totalCompletenessSum / count);
 
     const result = new Result({
-      student_id: studentDoc ? studentDoc._id : userId,
+      ...(resultIdentity || {}),
+      student_id: studentDoc ? studentDoc._id : (userId || null),
       user_id: userId,
       test_id: test ? test._id : null,
+      test_name: test?.title || '',
+      test_type: test?.test_type || '',
       module_id: test?.module_id || req.body.module_id || 'SPEAKING',
       score: avgScore,
       percentage: avgScore,
+      correct_answers: correctCount,
+      duration: test?.duration || 0,
+      time_taken_ms: Number.isFinite(Number(timeTakenMs)) ? Math.max(0, Number(timeTakenMs)) : 0,
       total_questions: questions.length,
       answers: evaluatedQuestions,
       transcription: evaluatedQuestions.map(eq => eq.transcription).filter(Boolean).join(' | '),
@@ -515,8 +662,15 @@ exports.submitSpeakingExam = async (req, res) => {
       submitted_at: new Date()
     });
 
-    if (userId) {
+    if (resultIdentity) {
       await result.save();
+    }
+    if (claimedAttempt) {
+      await ExamAttempt.updateOne(
+        { _id: claimedAttempt._id, status: 'submitting' },
+        { $set: { status: 'submitted', result_id: result._id } }
+      );
+      claimedAttempt = null;
     }
 
     return res.json({
@@ -537,6 +691,15 @@ exports.submitSpeakingExam = async (req, res) => {
     });
   } catch (error) {
     console.error('[submitSpeakingExam Error]:', error);
-    return res.status(500).json({ success: false, message: error.message });
+    if (claimedAttempt) {
+      await ExamAttempt.updateOne(
+        { _id: claimedAttempt._id, status: 'submitting' },
+        { $set: { status: 'in_progress' } }
+      );
+    }
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : 'Speaking assessment could not be completed.'
+    });
   }
 };

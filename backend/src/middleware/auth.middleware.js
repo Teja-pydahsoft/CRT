@@ -12,6 +12,30 @@ const authenticateToken = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, env.JWT_SECRET_KEY);
+    if (
+      decoded.auth_source === 'sdms' &&
+      Number.isSafeInteger(Number(decoded.sdms_student_id)) &&
+      Number(decoded.sdms_student_id) > 0
+    ) {
+      req.user = {
+        id: decoded.id,
+        _id: null,
+        sdms_student_id: Number(decoded.sdms_student_id),
+        auth_source: 'sdms',
+        username: decoded.username,
+        name: decoded.name,
+        email: decoded.email,
+        role: 'student',
+        college_id: decoded.college_id,
+        course_id: decoded.course_id,
+        sdms_course_id: decoded.sdms_course_id,
+        branch_id: decoded.branch_id,
+        year: decoded.year,
+        semester: decoded.semester,
+        section: decoded.section
+      };
+      return next();
+    }
     
     // Find user by id or username
     const userId = decoded.id || decoded.sub || decoded.user_id;
@@ -31,6 +55,8 @@ const authenticateToken = async (req, res, next) => {
         username: decoded.username || decoded.identity,
         role: decoded.role || 'student',
         campus_id: decoded.campus_id,
+        sdms_college_id: decoded.sdms_college_id,
+        sdms_course_id: decoded.sdms_course_id,
         course_id: decoded.course_id,
         batch_id: decoded.batch_id
       };

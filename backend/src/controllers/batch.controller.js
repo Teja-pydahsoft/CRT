@@ -1,12 +1,9 @@
 const Batch = require('../models/Batch');
-const Campus = require('../models/Campus');
-const Course = require('../models/Course');
-const Student = require('../models/Student');
-const User = require('../models/User');
-const emailService = require('../services/email.service');
 const papaparse = require('papaparse');
 const xlsx = require('xlsx');
 const sdmsService = require('../services/sdms.service');
+
+const studentDataMovedMessage = 'Student records are managed by SDMS. This portal does not create or modify student accounts.';
 
 exports.getBatches = async (req, res) => {
   try {
@@ -47,8 +44,19 @@ exports.deleteBatch = async (req, res) => {
 
 exports.getBatchCampuses = async (req, res) => {
   try {
-    const campuses = await Campus.find();
-    return res.json({ success: true, data: campuses });
+    let colleges = await sdmsService.getColleges();
+    if (req.sdmsScope?.collegeId) {
+      colleges = colleges.filter((college) => Number(college.id) === req.sdmsScope.collegeId);
+    } else if (req.sdmsScope?.courseId) {
+      const courses = await sdmsService.getCourses();
+      const collegeIds = new Set(
+        courses
+          .filter((course) => Number(course.id) === req.sdmsScope.courseId)
+          .map((course) => Number(course.college_id))
+      );
+      colleges = colleges.filter((college) => collegeIds.has(Number(college.id)));
+    }
+    return res.json({ success: true, source: 'rds', read_only: true, data: colleges });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -57,9 +65,12 @@ exports.getBatchCampuses = async (req, res) => {
 exports.getBatchCourses = async (req, res) => {
   try {
     const campusIds = req.query.campus_ids ? req.query.campus_ids.split(',') : [];
-    const filter = campusIds.length ? { campus_id: { $in: campusIds } } : {};
-    const courses = await Course.find(filter);
-    return res.json({ success: true, data: courses });
+    const collegeId = req.sdmsScope?.collegeId || campusIds[0];
+    let courses = await sdmsService.getCourses(collegeId);
+    if (req.sdmsScope?.courseId) {
+      courses = courses.filter((course) => Number(course.id) === req.sdmsScope.courseId);
+    }
+    return res.json({ success: true, source: 'rds', read_only: true, data: courses });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -101,180 +112,29 @@ exports.validateStudentUpload = async (req, res) => {
 };
 
 exports.uploadStudentsToBatch = async (req, res) => {
-  try {
-    const { campus_id, batch_id, students } = req.body;
-    if (!students || !Array.isArray(students)) {
-      return res.status(400).json({ success: false, message: 'Students array required' });
-    }
-
-    let createdCount = 0;
-    for (const item of students) {
-      const username = item.roll_number || item.student_id || item.email?.split('@')[0] || `std_${Date.now()}_${Math.floor(Math.random()*1000)}`;
-      const password = item.password || 'Student@123';
-      const email = item.email || `${username}@student.versant.com`;
-      const name = item.name || item.student_name || username;
-
-      let user = await User.findOne({ username });
-      if (!user) {
-        user = new User({
-          username,
-          password,
-          email,
-          name,
-          role: 'student',
-          campus_id,
-          batch_id
-        });
-        await user.save();
-      }
-
-      let student = await Student.findOne({ student_id: username });
-      if (!student) {
-        student = new Student({
-          user_id: user._id,
-          student_id: username,
-          roll_number: item.roll_number || username,
-          email,
-          name,
-          campus_id,
-          batch_id,
-          college_id: item.college_id || null,
-          college_name: item.college_name || '',
-          course_id: item.course_id || null,
-          course_name: item.course_name || '',
-          branch_id: item.branch_id || null,
-          branch_name: item.branch_name || '',
-          year: item.current_year || item.year || 1,
-          semester: item.current_semester || item.semester || 1,
-          section: item.section || 'A',
-          mobile_number: item.mobile_number || ''
-        });
-        await student.save();
-        createdCount++;
-      } else {
-        // Update academic metadata if available
-        student.college_id = item.college_id || student.college_id;
-        student.college_name = item.college_name || student.college_name;
-        student.course_id = item.course_id || student.course_id;
-        student.course_name = item.course_name || student.course_name;
-        student.branch_id = item.branch_id || student.branch_id;
-        student.branch_name = item.branch_name || student.branch_name;
-        student.year = item.current_year || item.year || student.year;
-        student.semester = item.current_semester || item.semester || student.semester;
-        student.section = item.section || student.section;
-        student.mobile_number = item.mobile_number || student.mobile_number;
-        await student.save();
-      }
-    }
-
-    if (batch_id) {
-      await Batch.findByIdAndUpdate(batch_id, { $inc: { student_count: createdCount } });
-    }
-
-    return res.json({
-      success: true,
-      message: `Successfully processed ${students.length} students. (${createdCount} new accounts created)`
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+  return res.status(410).json({ success: false, message: studentDataMovedMessage });
 };
 
 exports.getBatchStudents = async (req, res) => {
-  try {
-    const { batchId } = req.params;
-    const students = await Student.find({ batch_id: batchId }).populate('user_id');
-    return res.json({
-      success: true,
-      count: students.length,
-      students
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+  return res.status(410).json({ success: false, message: studentDataMovedMessage });
 };
 
 exports.getStudentAccessStatus = async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    const student = await Student.findById(studentId) || await Student.findOne({ student_id: studentId });
-
-    if (!student) {
-      return res.status(404).json({ success: false, message: 'Student not found' });
-    }
-
-    return res.json({
-      success: true,
-      data: {
-        authorized_levels: student.authorized_levels,
-        authorized_modules: student.authorized_modules
-      }
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+  return res.status(410).json({ success: false, message: studentDataMovedMessage });
 };
 
 exports.authorizeStudentLevel = async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    const { level } = req.body;
-    const student = await Student.findById(studentId);
-    if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
-
-    if (!student.authorized_levels.includes(level)) {
-      student.authorized_levels.push(level);
-      await student.save();
-    }
-    return res.json({ success: true, data: student });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+  return res.status(410).json({ success: false, message: studentDataMovedMessage });
 };
 
 exports.lockStudentLevel = async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    const { level } = req.body;
-    const student = await Student.findById(studentId);
-    if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
-
-    student.authorized_levels = student.authorized_levels.filter(l => l !== level);
-    await student.save();
-    return res.json({ success: true, data: student });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+  return res.status(410).json({ success: false, message: studentDataMovedMessage });
 };
 
 exports.authorizeStudentModule = async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    const { module } = req.body;
-    const student = await Student.findById(studentId);
-    if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
-
-    if (!student.authorized_modules.includes(module)) {
-      student.authorized_modules.push(module);
-      await student.save();
-    }
-    return res.json({ success: true, data: student });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+  return res.status(410).json({ success: false, message: studentDataMovedMessage });
 };
 
 exports.lockStudentModule = async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    const { module } = req.body;
-    const student = await Student.findById(studentId);
-    if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
-
-    student.authorized_modules = student.authorized_modules.filter(m => m !== module);
-    await student.save();
-    return res.json({ success: true, data: student });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+  return res.status(410).json({ success: false, message: studentDataMovedMessage });
 };

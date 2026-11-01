@@ -1,21 +1,22 @@
 const User = require('../models/User');
-const Campus = require('../models/Campus');
-const Course = require('../models/Course');
 const Batch = require('../models/Batch');
+const sdmsService = require('../services/sdms.service');
 
 exports.getSystemStats = async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
-    const totalCampuses = await Campus.countDocuments();
-    const totalCourses = await Course.countDocuments();
+    const [colleges, courses] = await Promise.all([
+      sdmsService.getColleges(),
+      sdmsService.getCourses()
+    ]);
     const totalBatches = await Batch.countDocuments();
 
     return res.json({
       success: true,
       data: {
         totalUsers,
-        totalCampuses,
-        totalCourses,
+        totalCampuses: colleges.length,
+        totalCourses: courses.length,
         totalBatches,
         systemHealth: '100%'
       }
@@ -28,18 +29,21 @@ exports.getSystemStats = async (req, res) => {
 exports.getDashboard = async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
-    const totalCampuses = await Campus.countDocuments();
-    const totalCourses = await Course.countDocuments();
+    const [colleges, courses, students] = await Promise.all([
+      sdmsService.getColleges(),
+      sdmsService.getCourses(),
+      sdmsService.getFilteredStudents({ page: 1, limit: 1, includePhoto: false })
+    ]);
     const totalBatches = await Batch.countDocuments();
 
     return res.json({
       success: true,
       data: {
         totalUsers,
-        totalCampuses,
-        totalCourses,
+        totalCampuses: colleges.length,
+        totalCourses: courses.length,
         totalBatches,
-        activeStudents: totalUsers,
+        activeStudents: students.pagination.total,
         systemHealth: '100%',
         recentActivities: []
       }
@@ -64,71 +68,37 @@ exports.getGlobalFeatures = async (req, res) => {
   });
 };
 
-const env = require('../config/env');
-const sdmsService = require('../services/sdms.service');
-
 exports.getCampuses = async (req, res) => {
   try {
-    if (env.USE_RDS_ORG_DATA) {
-      const colleges = await sdmsService.getColleges();
-      return res.json({ success: true, source: 'rds', read_only: true, data: colleges });
-    }
-    const campuses = await Campus.find();
-    return res.json({ success: true, data: campuses });
+    const colleges = await sdmsService.getColleges();
+    return res.json({ success: true, source: 'rds', read_only: true, data: colleges });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
 exports.createCampus = async (req, res) => {
-  try {
-    const campus = new Campus(req.body);
-    await campus.save();
-    return res.status(201).json({ success: true, data: campus });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+  return res.status(409).json({ success: false, message: 'Campus records are read-only and managed by SDMS.' });
 };
 
 exports.updateCampus = async (req, res) => {
-  try {
-    const campus = await Campus.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    return res.json({ success: true, data: campus });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+  return res.status(409).json({ success: false, message: 'Campus records are read-only and managed by SDMS.' });
 };
 
 exports.deleteCampus = async (req, res) => {
-  try {
-    await Campus.findByIdAndDelete(req.params.id);
-    return res.json({ success: true, message: 'Campus deleted' });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+  return res.status(409).json({ success: false, message: 'Campus records are read-only and managed by SDMS.' });
 };
 
 exports.getCourses = async (req, res) => {
   try {
     const { campusId } = req.params;
-    const filter = campusId ? { campus_id: campusId } : {};
-    const courses = await Course.find(filter).populate('campus_id');
-    return res.json({ success: true, data: courses });
+    const courses = await sdmsService.getCourses(campusId);
+    return res.json({ success: true, source: 'rds', read_only: true, data: courses });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
 exports.createCourse = async (req, res) => {
-  try {
-    const courseData = { ...req.body };
-    if (req.params.campusId) {
-      courseData.campus_id = req.params.campusId;
-    }
-    const course = new Course(courseData);
-    await course.save();
-    return res.status(201).json({ success: true, data: course });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
+  return res.status(409).json({ success: false, message: 'Course records are read-only and managed by SDMS.' });
 };

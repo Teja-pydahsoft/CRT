@@ -1,8 +1,29 @@
 const sdmsService = require('../services/sdms.service');
 
+const getAcademicFilters = (req) => ({
+  collegeId: req.sdmsScope?.collegeId || req.query.college_id || req.query.campus_id || null,
+  courseId: req.sdmsScope?.courseId || req.query.course_id || null,
+  branchId: req.query.branch_id || null,
+  year: req.query.year || req.query.current_year || null,
+  semester: req.query.semester || req.query.current_semester || null,
+  section: req.query.section || null,
+  search: req.query.search || null
+});
+
 exports.getColleges = async (req, res) => {
   try {
-    const colleges = await sdmsService.getColleges();
+    let colleges = await sdmsService.getColleges();
+    if (req.sdmsScope?.collegeId) {
+      colleges = colleges.filter((college) => Number(college.id) === req.sdmsScope.collegeId);
+    } else if (req.sdmsScope?.courseId) {
+      const courses = await sdmsService.getCourses();
+      const collegeIds = new Set(
+        courses
+          .filter((course) => Number(course.id) === req.sdmsScope.courseId)
+          .map((course) => Number(course.college_id))
+      );
+      colleges = colleges.filter((college) => collegeIds.has(Number(college.id)));
+    }
     return res.json({
       success: true,
       source: 'rds',
@@ -17,8 +38,11 @@ exports.getColleges = async (req, res) => {
 
 exports.getCourses = async (req, res) => {
   try {
-    const collegeId = req.query.college_id || req.query.campus_id;
-    const courses = await sdmsService.getCourses(collegeId);
+    const filters = getAcademicFilters(req);
+    let courses = await sdmsService.getCourses(filters.collegeId);
+    if (req.sdmsScope?.courseId) {
+      courses = courses.filter((course) => Number(course.id) === req.sdmsScope.courseId);
+    }
     return res.json({
       success: true,
       source: 'rds',
@@ -33,9 +57,8 @@ exports.getCourses = async (req, res) => {
 
 exports.getBranches = async (req, res) => {
   try {
-    const collegeId = req.query.college_id || req.query.campus_id;
-    const courseId = req.query.course_id;
-    const branches = await sdmsService.getBranches(collegeId, courseId);
+    const filters = getAcademicFilters(req);
+    const branches = await sdmsService.getBranches(filters.collegeId, filters.courseId);
     return res.json({
       success: true,
       source: 'rds',
@@ -50,10 +73,8 @@ exports.getBranches = async (req, res) => {
 
 exports.getYears = async (req, res) => {
   try {
-    const collegeId = req.query.college_id || req.query.campus_id;
-    const courseId = req.query.course_id;
-    const branchId = req.query.branch_id;
-    const years = await sdmsService.getYears(collegeId, courseId, branchId);
+    const filters = getAcademicFilters(req);
+    const years = await sdmsService.getYears(filters.collegeId, filters.courseId, filters.branchId);
     return res.json({
       success: true,
       source: 'rds',
@@ -68,11 +89,13 @@ exports.getYears = async (req, res) => {
 
 exports.getSemesters = async (req, res) => {
   try {
-    const collegeId = req.query.college_id || req.query.campus_id;
-    const courseId = req.query.course_id;
-    const branchId = req.query.branch_id;
-    const year = req.query.year || req.query.current_year;
-    const semesters = await sdmsService.getSemesters(collegeId, courseId, branchId, year);
+    const filters = getAcademicFilters(req);
+    const semesters = await sdmsService.getSemesters(
+      filters.collegeId,
+      filters.courseId,
+      filters.branchId,
+      filters.year
+    );
     return res.json({
       success: true,
       source: 'rds',
@@ -87,12 +110,14 @@ exports.getSemesters = async (req, res) => {
 
 exports.getSections = async (req, res) => {
   try {
-    const collegeId = req.query.college_id || req.query.campus_id;
-    const courseId = req.query.course_id;
-    const branchId = req.query.branch_id;
-    const year = req.query.year || req.query.current_year;
-    const semester = req.query.semester || req.query.current_semester;
-    const sections = await sdmsService.getSections(collegeId, courseId, branchId, year, semester);
+    const filters = getAcademicFilters(req);
+    const sections = await sdmsService.getSections(
+      filters.collegeId,
+      filters.courseId,
+      filters.branchId,
+      filters.year,
+      filters.semester
+    );
     return res.json({
       success: true,
       source: 'rds',
@@ -107,26 +132,15 @@ exports.getSections = async (req, res) => {
 
 exports.getStudents = async (req, res) => {
   try {
-    const collegeId = req.query.college_id || req.query.campus_id;
-    const courseId = req.query.course_id;
-    const branchId = req.query.branch_id;
-    const year = req.query.year || req.query.current_year;
-    const semester = req.query.semester || req.query.current_semester;
-    const section = req.query.section;
-    const search = req.query.search;
+    const filters = getAcademicFilters(req);
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 20;
 
     const result = await sdmsService.getFilteredStudents({
-      collegeId,
-      courseId,
-      branchId,
-      year,
-      semester,
-      section,
-      search,
+      ...filters,
       page,
-      limit
+      limit,
+      includePhoto: req.query.include_photo !== 'false'
     });
 
     return res.json({
@@ -144,24 +158,10 @@ exports.getStudents = async (req, res) => {
 
 exports.exportStudentsCsv = async (req, res) => {
   try {
-    const collegeId = req.query.college_id || req.query.campus_id;
-    const courseId = req.query.course_id;
-    const branchId = req.query.branch_id;
-    const year = req.query.year || req.query.current_year;
-    const semester = req.query.semester || req.query.current_semester;
-    const section = req.query.section;
-    const search = req.query.search;
+    const filters = getAcademicFilters(req);
 
-    const result = await sdmsService.getFilteredStudents({
-      collegeId,
-      courseId,
-      branchId,
-      year,
-      semester,
-      section,
-      search,
-      page: 1,
-      limit: 10000,
+    const result = await sdmsService.getAllFilteredStudents({
+      ...filters,
       includePhoto: false
     });
 
@@ -196,13 +196,17 @@ exports.exportStudentsCsv = async (req, res) => {
 exports.exportSingleStudentCsv = async (req, res) => {
   try {
     const { studentId } = req.params;
-    const result = await sdmsService.getFilteredStudents({
-      search: studentId,
-      page: 1,
-      limit: 1
-    });
-
-    const student = result.students?.[0] || { id: studentId, name: 'Student', roll_number: studentId };
+    if (!/^\d+$/.test(studentId) || Number(studentId) <= 0) {
+      return res.status(404).json({ success: false, message: 'Student not found.' });
+    }
+    const student = await sdmsService.getStudentIdentityById(studentId);
+    if (
+      !student ||
+      (req.sdmsScope?.collegeId && student.college_id !== req.sdmsScope.collegeId) ||
+      (req.sdmsScope?.courseId && student.course_id !== req.sdmsScope.courseId)
+    ) {
+      return res.status(404).json({ success: false, message: 'Student not found.' });
+    }
     const headers = ['ID', 'PIN / Roll No', 'Name', 'Email', 'Mobile', 'College', 'Course', 'Branch', 'Year', 'Semester', 'Section'];
     const row = [
       `"${student.id || ''}"`,
@@ -277,4 +281,3 @@ exports.validateStudentsBulk = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-

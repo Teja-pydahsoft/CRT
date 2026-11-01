@@ -9,4 +9,12 @@ const upload = multer({
   }
 });
 
+upload.examAudioAny = multer({
+  storage: storage,
+  limits: {
+    fileSize: 2 * 1024 * 1024,
+    files: 25
+  }
+}).any();
+
 module.exports = upload;

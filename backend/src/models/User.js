@@ -18,6 +18,8 @@ const userSchema = new mongoose.Schema({
   designation_name: { type: String, default: '' },
   phone_number: { type: String, default: '' },
   campus_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Campus', default: null },
+  sdms_college_id: { type: Number, default: null },
+  sdms_course_id: { type: Number, default: null },
   course_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Course', default: null },
   batch_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Batch', default: null },
   status: { type: String, default: 'active' },

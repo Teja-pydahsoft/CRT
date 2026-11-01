@@ -858,7 +858,7 @@ const ResultsManagement = () => {
             setLoading(true);
             setErrorMsg("");
 
-            const response = await api.get(`/superadmin/online-tests-overview?campus_id=${user?.campus_id || ''}`);
+            const response = await api.get(`/campus-admin/reports/online-tests?campus_id=${user?.campus_id || ''}`);
             if (response.data.success) {
                 setTests(response.data.data || []);
             } else {
@@ -876,7 +876,7 @@ const ResultsManagement = () => {
 
     const fetchTestAttempts = async (testId) => {
         try {
-            const response = await api.get(`/superadmin/test-attempts/${testId}`);
+            const response = await api.get(`/campus-admin/reports/online-tests/${testId}/attempts`);
             if (response.data.success) {
                 setTestAttempts(prev => ({
                     ...prev,
@@ -899,8 +899,6 @@ const ResultsManagement = () => {
             if (!testAttempts[testId]) {
                 await fetchTestAttempts(testId);
             }
-            // Fetch auto-release schedule for this test
-            await fetchAutoReleaseSchedule(testId);
         }
     };
 
@@ -912,7 +910,7 @@ const ResultsManagement = () => {
 
     const handleStudentClick = async (studentId, testId) => {
         try {
-            const response = await api.get(`/superadmin/student-attempts/${studentId}/${testId}`);
+            const response = await api.get(`/campus-admin/reports/students/${studentId}/online-tests/${testId}/attempts`);
             if (response.data.success) {
                 console.log("student attempt details", response.data);
                 setStudentAttemptDetails(response.data.data);

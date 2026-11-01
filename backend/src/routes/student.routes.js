@@ -4,7 +4,9 @@ const studentController = require('../controllers/student.controller');
 const testController = require('../controllers/test.controller');
 const sdmsController = require('../controllers/sdms.controller');
 const authenticateToken = require('../middleware/auth.middleware');
+const authorizeRoles = require('../middleware/role.middleware');
 const upload = require('../middleware/upload.middleware');
+const requireSdmsAssignment = require('../middleware/sdmsScope.middleware');
 
 router.use(authenticateToken);
 
@@ -13,26 +15,29 @@ router.get('/tests', studentController.getStudentTests);
 router.get('/test/:id', studentController.getTestDetails);
 router.get('/online-exams', studentController.getOnlineExams);
 router.get('/completed-exams', studentController.getCompletedExams);
+router.get('/test-history', studentController.getTestHistory);
 router.post('/tests/:id/start', studentController.startTest);
 router.post('/tests/:id/submit', studentController.submitOnlineExam);
-router.post('/tests/:id/submit-speaking', upload.any(), testController.submitSpeakingExam);
-router.post('/submit-speaking-test', upload.any(), testController.submitSpeakingExam);
+router.post('/tests/:id/submit-speaking', upload.examAudioAny, testController.submitSpeakingExam);
+router.post('/submit-speaking-test', upload.examAudioAny, testController.submitSpeakingExam);
 router.get('/auto-practice-questions', studentController.getAutoPracticeQuestions);
 router.get('/unlocked-modules', studentController.getUnlockedModules);
 router.get('/grammar-progress', studentController.getGrammarProgress);
 router.get('/test-result/:id', studentController.getTestResultById);
 
 // SDMS Hierarchy & Student Fetching
-router.get('/sdms/colleges', sdmsController.getColleges);
-router.get('/sdms/courses', sdmsController.getCourses);
-router.get('/sdms/branches', sdmsController.getBranches);
-router.get('/sdms/years', sdmsController.getYears);
-router.get('/sdms/semesters', sdmsController.getSemesters);
-router.get('/sdms/sections', sdmsController.getSections);
-router.get('/sdms/students', sdmsController.getStudents);
-router.get('/sdms/export', sdmsController.exportStudentsCsv);
-router.get('/sdms/validation-rules', sdmsController.getAcademicValidationRules);
-router.post('/sdms/validate-student', sdmsController.validateStudent);
-router.post('/sdms/validate-students-bulk', sdmsController.validateStudentsBulk);
+const organizationManagers = authorizeRoles('superadmin', 'campus_admin', 'course_admin');
+
+router.get('/sdms/colleges', organizationManagers, requireSdmsAssignment, sdmsController.getColleges);
+router.get('/sdms/courses', organizationManagers, requireSdmsAssignment, sdmsController.getCourses);
+router.get('/sdms/branches', organizationManagers, requireSdmsAssignment, sdmsController.getBranches);
+router.get('/sdms/years', organizationManagers, requireSdmsAssignment, sdmsController.getYears);
+router.get('/sdms/semesters', organizationManagers, requireSdmsAssignment, sdmsController.getSemesters);
+router.get('/sdms/sections', organizationManagers, requireSdmsAssignment, sdmsController.getSections);
+router.get('/sdms/students', organizationManagers, requireSdmsAssignment, sdmsController.getStudents);
+router.get('/sdms/export', organizationManagers, requireSdmsAssignment, sdmsController.exportStudentsCsv);
+router.get('/sdms/validation-rules', organizationManagers, sdmsController.getAcademicValidationRules);
+router.post('/sdms/validate-student', organizationManagers, sdmsController.validateStudent);
+router.post('/sdms/validate-students-bulk', organizationManagers, sdmsController.validateStudentsBulk);
 
 module.exports = router;

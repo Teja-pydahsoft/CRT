@@ -1,4 +1,5 @@
 const mysql = require('mysql2/promise');
+const bcrypt = require('bcryptjs');
 const env = require('../config/env');
 
 class SDMSService {
@@ -31,6 +32,105 @@ class SDMSService {
       console.log('✅ SDMS MySQL connection pool initialized');
     }
     return this.pool;
+  }
+
+  async authenticateStudent(identifier, password) {
+    const [rows] = await this.getPool().query(`
+      SELECT
+        c.student_id,
+        c.username,
+        c.password_hash,
+        s.student_name,
+        s.email,
+        s.student_status,
+        s.admission_number,
+        s.pin_no,
+        s.student_mobile,
+        s.batch,
+        s.college_id,
+        s.course_id,
+        s.branch_id,
+        s.current_year,
+        s.current_semester,
+        s.section,
+        COALESCE(s.college, col.name) AS college_name,
+        COALESCE(s.course, crs.name) AS course_name,
+        COALESCE(s.branch, cb.name) AS branch_name
+      FROM student_credentials c
+      INNER JOIN students s ON s.id = c.student_id
+      LEFT JOIN colleges col ON s.college_id = col.id
+      LEFT JOIN courses crs ON s.course_id = crs.id
+      LEFT JOIN course_branches cb ON s.branch_id = cb.id
+      WHERE c.username = ? OR c.admission_number = ?
+      LIMIT 2
+    `, [identifier, identifier]);
+
+    if (rows.length !== 1) return null;
+    const row = rows[0];
+    const status = String(row.student_status || '').trim().toLowerCase();
+    if (status && status !== 'regular' && status !== 'active') return null;
+    if (!(await bcrypt.compare(password, row.password_hash))) return null;
+
+    return this.formatStudentIdentity(row);
+  }
+
+  async getStudentIdentityById(studentId) {
+    const [rows] = await this.getPool().query(`
+      SELECT
+        c.student_id,
+        c.username,
+        s.student_name,
+        s.email,
+        s.student_status,
+        s.admission_number,
+        s.pin_no,
+        s.student_mobile,
+        s.batch,
+        s.college_id,
+        s.course_id,
+        s.branch_id,
+        s.current_year,
+        s.current_semester,
+        s.section,
+        COALESCE(s.college, col.name) AS college_name,
+        COALESCE(s.course, crs.name) AS course_name,
+        COALESCE(s.branch, cb.name) AS branch_name
+      FROM student_credentials c
+      INNER JOIN students s ON s.id = c.student_id
+      LEFT JOIN colleges col ON s.college_id = col.id
+      LEFT JOIN courses crs ON s.course_id = crs.id
+      LEFT JOIN course_branches cb ON s.branch_id = cb.id
+      WHERE c.student_id = ?
+      LIMIT 1
+    `, [Number(studentId)]);
+    if (!rows.length) return null;
+    const status = String(rows[0].student_status || '').trim().toLowerCase();
+    if (status && status !== 'regular' && status !== 'active') return null;
+    return this.formatStudentIdentity(rows[0]);
+  }
+
+  formatStudentIdentity(row) {
+    return {
+      id: Number(row.student_id),
+      username: row.username,
+      name: row.student_name || row.username,
+      email: row.email || '',
+      roll_number: row.pin_no || row.admission_number || String(row.student_id),
+      pin_no: row.pin_no || '',
+      admission_number: row.admission_number || '',
+      mobile_number: row.student_mobile || '',
+      status: row.student_status || 'active',
+      batch_name: row.batch || '',
+      college_name: row.college_name || '',
+      course_name: row.course_name || '',
+      branch_name: row.branch_name || '',
+      college_id: row.college_id === null ? null : Number(row.college_id),
+      course_id: row.course_id === null ? null : Number(row.course_id),
+      branch_id: row.branch_id === null ? null : Number(row.branch_id),
+      year: row.current_year === null ? null : Number(row.current_year),
+      semester: row.current_semester === null ? null : Number(row.current_semester),
+      section: row.section || ''
+    };
   }
 
   /**
@@ -95,39 +195,33 @@ class SDMSService {
   async getYears(collegeId, courseId, branchId) {
     const pool = this.getPool();
     
-    // Check if course has total_years defined
     if (courseId) {
-      try {
-        const [courses] = await pool.query('SELECT total_years FROM courses WHERE id = ?', [Number(courseId)]);
-        if (courses.length > 0 && courses[0].total_years) {
-          const total = Number(courses[0].total_years);
-          return Array.from({ length: total }, (_, i) => i + 1);
-        }
-      } catch (err) {
-        console.warn('Error fetching course total_years:', err.message);
+      const [courses] = await pool.query('SELECT total_years FROM courses WHERE id = ?', [Number(courseId)]);
+      if (courses.length > 0 && courses[0].total_years) {
+        const total = Number(courses[0].total_years);
+        return Array.from({ length: total }, (_, i) => i + 1);
       }
     }
 
-    try {
-      let query = "SELECT DISTINCT current_year as year FROM students WHERE current_year IS NOT NULL AND current_year > 0 AND (student_status = 'Regular' OR LOWER(student_status) = 'regular' OR student_status IS NULL)";
-      const params = [];
+    let query = "SELECT DISTINCT current_year as year FROM students WHERE current_year IS NOT NULL AND current_year > 0 AND (student_status = 'Regular' OR LOWER(student_status) = 'regular' OR student_status IS NULL OR student_status = 'Active')";
+    const params = [];
 
-      if (collegeId) {
-        query += ' AND college_id = ?';
-        params.push(Number(collegeId));
-      }
-      if (branchId) {
-        query += ' AND branch_id = ?';
-        params.push(Number(branchId));
-      }
-      query += ' ORDER BY year ASC';
-
-      const [rows] = await pool.query(query, params);
-      const dbYears = rows.map(r => Number(r.year)).filter(y => y >= 1 && y <= 6);
-      return dbYears.length > 0 ? dbYears : [1, 2, 3, 4];
-    } catch {
-      return [1, 2, 3, 4];
+    if (collegeId) {
+      query += ' AND college_id = ?';
+      params.push(Number(collegeId));
     }
+    if (courseId) {
+      query += ' AND course_id = ?';
+      params.push(Number(courseId));
+    }
+    if (branchId) {
+      query += ' AND branch_id = ?';
+      params.push(Number(branchId));
+    }
+    query += ' ORDER BY year ASC';
+
+    const [rows] = await pool.query(query, params);
+    return rows.map(r => Number(r.year)).filter(y => y >= 1 && y <= 6);
   }
 
   /**
@@ -175,13 +269,8 @@ class SDMSService {
 
     query += ' ORDER BY s.section ASC';
 
-    try {
-      const [rows] = await pool.query(query, params);
-      const sections = rows.map(r => r.section).filter(Boolean);
-      return sections.length > 0 ? sections : ['A', 'B', 'C', 'D'];
-    } catch {
-      return ['A', 'B', 'C', 'D'];
-    }
+    const [rows] = await pool.query(query, params);
+    return rows.map(r => r.section).filter(Boolean);
   }
 
   /**
@@ -686,7 +775,8 @@ class SDMSService {
     search,
     page = 1,
     limit = 20,
-    includePhoto = true
+    includePhoto = true,
+    loginEnabledOnly = false
   }) {
     const pool = this.getPool();
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -695,6 +785,9 @@ class SDMSService {
 
     // Filter Regular / Active students
     let whereClause = "WHERE (s.student_status = 'Regular' OR LOWER(s.student_status) = 'regular' OR s.student_status IS NULL OR s.student_status = 'Active')";
+    if (loginEnabledOnly) {
+      whereClause += ' AND EXISTS (SELECT 1 FROM student_credentials sc WHERE sc.student_id = s.id)';
+    }
     const params = [];
 
     if (collegeId) {
@@ -780,6 +873,8 @@ class SDMSService {
       return {
         _id: s.id.toString(),
         id: s.id,
+        sdms_student_id: Number(s.id),
+        admission_number: s.admission_number || '',
         name: s.student_name || 'N/A',
         student_name: s.student_name || 'N/A',
         photo: s.student_photo || null,
@@ -814,6 +909,71 @@ class SDMSService {
       }
     };
   }
+
+  async getAllFilteredStudents(filters, maxRows = 10000) {
+    const pageSize = 200;
+    const firstPage = await this.getFilteredStudents({
+      ...filters,
+      page: 1,
+      limit: pageSize
+    });
+    const students = [...firstPage.students];
+    const pageCount = Math.min(
+      Math.ceil(firstPage.pagination.total / pageSize),
+      Math.ceil(maxRows / pageSize)
+    );
+    for (let page = 2; page <= pageCount; page += 1) {
+      const result = await this.getFilteredStudents({
+        ...filters,
+        page,
+        limit: pageSize
+      });
+      students.push(...result.students);
+    }
+    return {
+      students: students.slice(0, maxRows),
+      total: firstPage.pagination.total,
+      truncated: firstPage.pagination.total > maxRows
+    };
+  }
+
+  async getExamAudience(test, collegeId = null, maxStudents = 5000, courseId = null) {
+    const filters = {
+      collegeId: collegeId || test.target_college_ids?.[0] || null,
+      courseId: courseId || test.target_course_ids?.[0] || null,
+      branchId: test.target_branch_ids?.[0] || null,
+      year: test.target_years?.[0] || null,
+      semester: test.target_semesters?.[0] || null,
+      section: test.target_sections?.[0] || null,
+      page: 1,
+      limit: 200,
+      includePhoto: false,
+      loginEnabledOnly: true
+    };
+
+    const result = await this.getAllFilteredStudents(filters, maxStudents);
+    return {
+      students: result.students,
+      total: result.total,
+      truncated: result.truncated
+    };
+  }
+
+  async getBatchCount(collegeId = null) {
+    let query = `
+      SELECT COUNT(DISTINCT NULLIF(TRIM(batch), '')) AS total
+      FROM students
+      WHERE (student_status = 'Regular' OR LOWER(student_status) = 'regular' OR student_status IS NULL OR student_status = 'Active')
+    `;
+    const params = [];
+    if (collegeId) {
+      query += ' AND college_id = ?';
+      params.push(Number(collegeId));
+    }
+    const [rows] = await this.getPool().query(query, params);
+    return Number(rows[0]?.total || 0);
+  }
+
 }
 
 module.exports = new SDMSService();

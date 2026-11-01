@@ -4,12 +4,14 @@ const batchController = require('../controllers/batch.controller');
 const authenticateToken = require('../middleware/auth.middleware');
 const authorizeRoles = require('../middleware/role.middleware');
 const upload = require('../middleware/upload.middleware');
+const requireSdmsAssignment = require('../middleware/sdmsScope.middleware');
 
 router.use(authenticateToken);
+const organizationManagers = authorizeRoles('superadmin', 'campus_admin', 'course_admin');
 
 // Campus and Course lookup for batch creation
-router.get('/campuses', batchController.getBatchCampuses);
-router.get('/courses', batchController.getBatchCourses);
+router.get('/campuses', organizationManagers, requireSdmsAssignment, batchController.getBatchCampuses);
+router.get('/courses', organizationManagers, requireSdmsAssignment, batchController.getBatchCourses);
 
 // Student batch CRUD
 router.get('/', batchController.getBatches);
@@ -20,14 +22,14 @@ router.delete('/:id', authorizeRoles('superadmin', 'campus_admin'), batchControl
 const sdmsController = require('../controllers/sdms.controller');
 
 // SDMS compatibility endpoints
-router.get('/students/filtered/credentials', sdmsController.exportStudentsCsv);
-router.get('/students/:studentId/credentials', sdmsController.exportSingleStudentCsv);
-router.get('/students/filtered', sdmsController.getStudents);
-router.get('/branches', sdmsController.getBranches);
+router.get('/students/filtered/credentials', organizationManagers, requireSdmsAssignment, sdmsController.exportStudentsCsv);
+router.get('/students/:studentId/credentials', organizationManagers, requireSdmsAssignment, sdmsController.exportSingleStudentCsv);
+router.get('/students/filtered', organizationManagers, requireSdmsAssignment, sdmsController.getStudents);
+router.get('/branches', organizationManagers, requireSdmsAssignment, sdmsController.getBranches);
 
 // File validation and upload
-router.post('/validate-student-upload', upload.single('file'), batchController.validateStudentUpload);
-router.post('/upload-students', authorizeRoles('superadmin', 'campus_admin'), batchController.uploadStudentsToBatch);
+router.post('/validate-student-upload', organizationManagers, upload.single('file'), batchController.validateStudentUpload);
+router.post('/upload-students', organizationManagers, batchController.uploadStudentsToBatch);
 
 // Batch details and student locking/unlocking
 router.get('/batch/:batchId/students', batchController.getBatchStudents);

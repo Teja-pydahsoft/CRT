@@ -29,7 +29,6 @@ import {
     Settings
 } from 'lucide-react';
 import { useNotification } from '../../contexts/NotificationContext';
-import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -739,7 +738,6 @@ const CourseReports = () => {
     const [releaseStatus, setReleaseStatus] = useState({});
     const [releaseLoading, setReleaseLoading] = useState({});
     const { error, success } = useNotification();
-    const { user } = useAuth();
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -749,28 +747,9 @@ const CourseReports = () => {
 
     const fetchFilterData = async () => {
         try {
-            // Fetch batches for the course admin's course
-            // Use batch-management/campuses endpoint which doesn't require campus_management permission
-            const [batchRes, campusRes] = await Promise.all([
-                user?.course_id ? api.get(`/batch-management/?course_id=${user.course_id}`) : Promise.resolve({ data: { data: [] } }),
-                api.get('/batch-management/campuses').catch(() => ({ data: { data: [] } })) // Fallback if endpoint fails
-            ]);
-            
-            if (batchRes?.data?.data) {
-                setBatches(batchRes.data.data);
-                console.log('Course Admin - Batches fetched:', batchRes.data.data.length, batchRes.data.data);
-            } else if (Array.isArray(batchRes?.data)) {
-                setBatches(batchRes.data);
-                console.log('Course Admin - Batches fetched (array):', batchRes.data.length);
-            }
-            
-            if (campusRes?.data?.data) {
-                setCampuses(campusRes.data.data);
-                console.log('Course Admin - Campuses fetched:', campusRes.data.data.length, campusRes.data.data);
-            } else if (Array.isArray(campusRes?.data)) {
-                setCampuses(campusRes.data);
-                console.log('Course Admin - Campuses fetched (array):', campusRes.data.length);
-            }
+            const campusRes = await api.get('/batch-management/campuses');
+            setCampuses(campusRes.data.data || []);
+            setBatches([]);
         } catch (err) {
             console.error('Error fetching filter data:', err);
         }
@@ -862,8 +841,7 @@ const CourseReports = () => {
             setLoading(true);
             setErrorMsg("");
             
-            // Backend automatically filters by course_id based on user role (RBAC)
-            const response = await api.get('/superadmin/online-tests-overview');
+            const response = await api.get('/course-admin/reports/online-tests');
             console.log('Course Admin - Tests Overview Response:', {
                 success: response.data.success,
                 dataLength: response.data.data?.length || 0,
@@ -903,8 +881,7 @@ const CourseReports = () => {
 
     const fetchTestAttempts = async (testId) => {
         try {
-            // Backend automatically filters by course_id based on user role (RBAC)
-            const response = await api.get(`/superadmin/test-attempts/${testId}`);
+            const response = await api.get(`/course-admin/reports/online-tests/${testId}/attempts`);
             
             if (response.data.success) {
                 const attempts = response.data.data || [];
@@ -930,7 +907,6 @@ const CourseReports = () => {
             if (!testAttempts[testId]) {
                 await fetchTestAttempts(testId);
             }
-            await fetchAutoReleaseSchedule(testId);
         }
     };
 
@@ -941,7 +917,7 @@ const CourseReports = () => {
 
     const handleStudentClick = async (studentId, testId) => {
         try {
-            const response = await api.get(`/superadmin/student-attempts/${studentId}/${testId}`);
+            const response = await api.get(`/course-admin/reports/students/${studentId}/online-tests/${testId}/attempts`);
             if (response.data.success) {
                 setStudentAttemptDetails(response.data.data);
                 setSelectedStudent(studentId);

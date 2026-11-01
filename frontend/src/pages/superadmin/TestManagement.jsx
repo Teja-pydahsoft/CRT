@@ -33,9 +33,7 @@ import {
   createOnlineTest,
   deleteTest,
   getAutoPracticeQuestions,
-  getStudentCount,
-  getCampuses,
-  getBatchCampuses
+  getStudentCount
 } from '../../services/api';
 import api from '../../services/api';
 
@@ -453,11 +451,21 @@ function CreateTestWizardModal({ onClose, onTestCreated }) {
   });
 
   // Audience targeting
-  const [campuses, setCampuses] = useState([]);
-  const [selectedCampus, setSelectedCampus] = useState('all');
-  const [batches, setBatches] = useState([]);
-  const [selectedBatches, setSelectedBatches] = useState(['all']);
-  const [targetStudentCount, setTargetStudentCount] = useState(120);
+  const [colleges, setColleges] = useState([]);
+  const [courses, setCourses] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [years, setYears] = useState([]);
+  const [semesters, setSemesters] = useState([]);
+  const [sections, setSections] = useState([]);
+  const [selectedCollege, setSelectedCollege] = useState('all');
+  const [selectedCourse, setSelectedCourse] = useState('all');
+  const [selectedBranch, setSelectedBranch] = useState('all');
+  const [selectedYear, setSelectedYear] = useState('all');
+  const [selectedSemester, setSelectedSemester] = useState('all');
+  const [selectedSection, setSelectedSection] = useState('all');
+  const [targetStudentCount, setTargetStudentCount] = useState(null);
+  const [audienceLoading, setAudienceLoading] = useState(false);
+  const [audienceError, setAudienceError] = useState('');
 
   // STEP 2 STATE: Questions
   const [questions, setQuestions] = useState([]);
@@ -470,41 +478,123 @@ function CreateTestWizardModal({ onClose, onTestCreated }) {
   // STEP 3 STATE: Review & Notifications
   const [notifyStudents, setNotifyStudents] = useState(true);
 
-  // Fetch Campuses and Batches on mount
+  // Load the authoritative SDMS hierarchy used to target exam audiences.
   useEffect(() => {
-    async function fetchAudienceData() {
+    async function fetchColleges() {
       try {
-        const campRes = await getBatchCampuses().catch(() => getCampuses().catch(() => null));
-        const campList = campRes?.data?.data || campRes?.data || [];
-        if (Array.isArray(campList)) setCampuses(campList);
-
-        const batchRes = await api.get('/batch-management').catch(() => null);
-        const batchList = batchRes?.data?.data || batchRes?.data || [];
-        if (Array.isArray(batchList)) setBatches(batchList);
+        const response = await api.get('/student/sdms/colleges');
+        setColleges(response.data?.data || []);
+        setAudienceError('');
       } catch (err) {
-        console.warn('Audience fetch fallback:', err);
+        setAudienceError(err.response?.data?.message || 'Unable to load SDMS colleges.');
       }
     }
-    fetchAudienceData();
+    fetchColleges();
   }, []);
 
-  // Update Student Count when audience choices change
+  useEffect(() => {
+    setCourses([]);
+    setBranches([]);
+    setYears([]);
+    setSemesters([]);
+    setSections([]);
+    setSelectedCourse('all');
+    setSelectedBranch('all');
+    setSelectedYear('all');
+    setSelectedSemester('all');
+    setSelectedSection('all');
+    if (selectedCollege === 'all') return;
+
+    api.get('/student/sdms/courses', { params: { college_id: selectedCollege } })
+      .then(response => setCourses(response.data?.data || []))
+      .catch(err => setAudienceError(err.response?.data?.message || 'Unable to load SDMS courses.'));
+  }, [selectedCollege]);
+
+  useEffect(() => {
+    setBranches([]);
+    setYears([]);
+    setSemesters([]);
+    setSections([]);
+    setSelectedBranch('all');
+    setSelectedYear('all');
+    setSelectedSemester('all');
+    setSelectedSection('all');
+    if (selectedCourse === 'all') return;
+
+    api.get('/student/sdms/branches', {
+      params: {
+        college_id: selectedCollege === 'all' ? undefined : selectedCollege,
+        course_id: selectedCourse
+      }
+    })
+      .then(response => setBranches(response.data?.data || []))
+      .catch(err => setAudienceError(err.response?.data?.message || 'Unable to load SDMS branches.'));
+  }, [selectedCollege, selectedCourse]);
+
+  useEffect(() => {
+    setYears([]);
+    setSemesters([]);
+    setSections([]);
+    setSelectedYear('all');
+    setSelectedSemester('all');
+    setSelectedSection('all');
+    const params = {
+      college_id: selectedCollege === 'all' ? undefined : selectedCollege,
+      course_id: selectedCourse === 'all' ? undefined : selectedCourse,
+      branch_id: selectedBranch === 'all' ? undefined : selectedBranch
+    };
+    api.get('/student/sdms/years', { params })
+      .then(response => setYears(response.data?.data || []))
+      .catch(err => setAudienceError(err.response?.data?.message || 'Unable to load SDMS years.'));
+  }, [selectedCollege, selectedCourse, selectedBranch]);
+
+  useEffect(() => {
+    setSemesters([]);
+    setSections([]);
+    setSelectedSemester('all');
+    setSelectedSection('all');
+    if (selectedYear === 'all') return;
+
+    const params = {
+      college_id: selectedCollege === 'all' ? undefined : selectedCollege,
+      course_id: selectedCourse === 'all' ? undefined : selectedCourse,
+      branch_id: selectedBranch === 'all' ? undefined : selectedBranch,
+      year: selectedYear
+    };
+    Promise.all([
+      api.get('/student/sdms/semesters', { params }),
+      api.get('/student/sdms/sections', { params })
+    ])
+      .then(([semesterResponse, sectionResponse]) => {
+        setSemesters(semesterResponse.data?.data || []);
+        setSections(sectionResponse.data?.data || []);
+      })
+      .catch(err => setAudienceError(err.response?.data?.message || 'Unable to load SDMS semester and section options.'));
+  }, [selectedCollege, selectedCourse, selectedBranch, selectedYear]);
+
   useEffect(() => {
     async function calcStudentCount() {
       try {
+        setAudienceLoading(true);
+        setAudienceError('');
         const res = await getStudentCount({
-          campus: selectedCampus,
-          batches: selectedBatches
+          college_id: selectedCollege === 'all' ? undefined : selectedCollege,
+          course_id: selectedCourse === 'all' ? undefined : selectedCourse,
+          branch_id: selectedBranch === 'all' ? undefined : selectedBranch,
+          year: selectedYear === 'all' ? undefined : selectedYear,
+          semester: selectedSemester === 'all' ? undefined : selectedSemester,
+          section: selectedSection === 'all' ? undefined : selectedSection
         });
-        if (res?.data?.count !== undefined) {
-          setTargetStudentCount(res.data.count);
-        }
-      } catch {
-        setTargetStudentCount(selectedBatches.includes('all') ? 120 : selectedBatches.length * 45);
+        setTargetStudentCount(res.data?.count ?? 0);
+      } catch (err) {
+        setTargetStudentCount(null);
+        setAudienceError(err.response?.data?.message || 'Unable to count the selected SDMS students.');
+      } finally {
+        setAudienceLoading(false);
       }
     }
     calcStudentCount();
-  }, [selectedCampus, selectedBatches]);
+  }, [selectedCollege, selectedCourse, selectedBranch, selectedYear, selectedSemester, selectedSection]);
 
   // Update default title when module/topic changes
   const handleModuleChange = (newMod) => {
@@ -704,8 +794,12 @@ function CreateTestWizardModal({ onClose, onTestCreated }) {
         startDateTime: new Date(startDateTime),
         endDateTime: new Date(endDateTime),
         test_type: 'online_exam',
-        target_campus_ids: selectedCampus === 'all' ? [] : [selectedCampus],
-        target_batch_ids: selectedBatches.includes('all') ? [] : selectedBatches,
+        target_college_ids: selectedCollege === 'all' ? [] : [Number(selectedCollege)],
+        target_course_ids: selectedCourse === 'all' ? [] : [Number(selectedCourse)],
+        target_branch_ids: selectedBranch === 'all' ? [] : [Number(selectedBranch)],
+        target_years: selectedYear === 'all' ? [] : [Number(selectedYear)],
+        target_semesters: selectedSemester === 'all' ? [] : [Number(selectedSemester)],
+        target_sections: selectedSection === 'all' ? [] : [selectedSection],
         questions: questions,
         notify_students: notifyStudents
       };
@@ -941,53 +1035,111 @@ function CreateTestWizardModal({ onClose, onTestCreated }) {
                   <div>
                     <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                       <Users className="w-4 h-4 text-indigo-600" />
-                      Target Students & Batches
+                      Target Students from SDMS
                     </h4>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Designate which campuses and student batches will be assigned this test.
+                      Choose the SDMS college and optional academic filters for this exam.
                     </p>
                   </div>
 
                   {/* Real-time Student Count Badge */}
                   <div className="bg-indigo-100/70 border border-indigo-200 text-indigo-800 px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5">
                     <span>🎯</span>
-                    <span>{targetStudentCount} Students Target</span>
+                    <span>
+                      {audienceLoading
+                        ? 'Counting SDMS students...'
+                        : targetStudentCount === null
+                          ? 'Student count unavailable'
+                          : `${targetStudentCount} SDMS students`}
+                    </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {audienceError && (
+                  <p className="text-sm text-red-600" role="alert">{audienceError}</p>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">
-                      Campus
-                    </label>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">SDMS College</label>
                     <select
-                      value={selectedCampus}
-                      onChange={e => setSelectedCampus(e.target.value)}
+                      value={selectedCollege}
+                      onChange={e => setSelectedCollege(e.target.value)}
                       className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                     >
-                      <option value="all">All Campuses (Entire Institution)</option>
-                      {campuses.map(camp => (
-                        <option key={camp._id} value={camp._id}>
-                          {camp.name || camp.campus_name}
-                        </option>
+                      <option value="all">All Colleges</option>
+                      {colleges.map(college => (
+                        <option key={college.id} value={college.id}>{college.name}</option>
                       ))}
                     </select>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">
-                      Student Batches
-                    </label>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Course</label>
                     <select
-                      value={selectedBatches[0] || 'all'}
-                      onChange={e => setSelectedBatches([e.target.value])}
+                      value={selectedCourse}
+                      onChange={e => setSelectedCourse(e.target.value)}
                       className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                     >
-                      <option value="all">All Active Batches</option>
-                      {batches.map(batch => (
-                        <option key={batch._id} value={batch._id}>
-                          {batch.name || batch.batch_name}
-                        </option>
+                      <option value="all">All Courses</option>
+                      {courses.map(course => (
+                        <option key={course.id} value={course.id}>{course.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Branch</label>
+                    <select
+                      value={selectedBranch}
+                      onChange={e => setSelectedBranch(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="all">All Branches</option>
+                      {branches.map(branch => (
+                        <option key={branch.id} value={branch.id}>{branch.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Year</label>
+                    <select
+                      value={selectedYear}
+                      onChange={e => setSelectedYear(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="all">All Years</option>
+                      {years.map(year => (
+                        <option key={year} value={year}>Year {year}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Semester</label>
+                    <select
+                      value={selectedSemester}
+                      onChange={e => setSelectedSemester(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="all">All Semesters</option>
+                      {semesters.map(semester => (
+                        <option key={semester} value={semester}>Semester {semester}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Section</label>
+                    <select
+                      value={selectedSection}
+                      onChange={e => setSelectedSection(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="all">All Sections</option>
+                      {sections.map(section => (
+                        <option key={section} value={section}>{section}</option>
                       ))}
                     </select>
                   </div>

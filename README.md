@@ -16,10 +16,13 @@ A web-based English language testing platform with role-based administration, on
 - **Frontend:** React 18, Vite, Tailwind CSS.
 - **Backend:** Node.js, Express, Mongoose, and Socket.IO.
 - **Database:** MongoDB.
+- **Student identity and academic source:** SDMS MySQL/RDS, accessed read-only by the portal.
 - **Speech service:** Python Flask/Gunicorn; local CPU Whisper transcription (faster-whisper tiny/int8) and offline eSpeak NG text-to-speech.
 - **Deployment:** Docker Compose can run the frontend, API, speech service, and MongoDB together.
 
 Speech recognition and synthesis run locally in the AI service; no OpenAI key or external speech provider is required. The first transcription downloads the small Whisper model into a persistent Docker volume. The stack is sized for the shared Lightsail instance with about 3.7 GiB of RAM, not for a 1 GB instance; keep traffic low and monitor memory alongside the existing workloads.
+
+Students authenticate with their SDMS credentials, and exam audiences and organization reporting use SDMS academic IDs. MongoDB remains the store for portal staff, tests, exam attempts, and results; it is not the source of student or campus records. Configure the external SDMS MySQL/RDS connection (`DB_HOST`, `DB_USER`, `DB_PASSWORD`, and related values) when enabling student access.
 
 ## Quick start with Docker
 

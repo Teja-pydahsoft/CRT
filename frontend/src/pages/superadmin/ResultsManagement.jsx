@@ -915,8 +915,6 @@ const ResultsManagement = () => {
             if (!testAttempts[testId]) {
                 await fetchTestAttempts(testId);
             }
-            // Fetch auto-release schedule for this test
-            await fetchAutoReleaseSchedule(testId);
         }
     };
 

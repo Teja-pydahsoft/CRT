@@ -399,8 +399,8 @@ export const getAutoPracticeQuestions = async (module, topic, count = 25) => {
 export const getAllTests = async () => api.get('/test-management/tests');
 
 // Returns { count, students: [ ... ] }
-export const getStudentCount = async ({ campus, batches, branches, courses }) =>
-  api.post('/test-management/student-count', { campus, batches, branches, courses });
+export const getStudentCount = async (filters) =>
+  api.post('/test-management/student-count', filters);
 
 export const getStudentAccessStatus = async (studentId) => {
   return api.get(`/batch-management/student/${studentId}/access-status`);

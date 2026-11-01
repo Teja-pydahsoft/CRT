@@ -92,6 +92,7 @@ Monitor available memory, swap, and all containers during real traffic, especial
 
 - Compose requires MongoDB credentials and both JWT secrets; startup fails with a configuration error if they are missing.
 - MySQL/RDS is not hosted by this Compose stack. Configure `DB_HOST`, `DB_USER`, and related values in `.env` only when using that external integration.
+- SDMS student login, exam audience selection, and campus/course reporting require the external SDMS MySQL/RDS connection. Run `docker compose exec backend npm run migrate:sdms-attempt-indexes` once after deploying the updated backend and before opening exams to SDMS students.
 - Encode special characters in MongoDB credentials before placing them in the URI, or use URL-safe random passwords.
 - Set `CORS_ORIGINS` to the frontend origins that actually call the API directly. Same-origin traffic through the included Nginx proxy does not require CORS.
 - If a container repeatedly restarts or reports out-of-memory, inspect `docker stats` and system memory. Reduce concurrency or upgrade the instance; do not remove memory limits as a workaround.

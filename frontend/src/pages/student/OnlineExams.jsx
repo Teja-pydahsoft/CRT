@@ -20,7 +20,7 @@ const OnlineExams = () => {
       try {
         setLoading(true)
         const response = await api.get('/student/online-exams')
-        setExams(response.data.data)
+        setExams(response.data.data || [])
       } catch (err) {
         showError('Failed to load online exams. Please try again later.')
         setExams([])

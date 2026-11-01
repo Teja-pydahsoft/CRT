@@ -17,7 +17,17 @@ function isExamClosedByServerMessage(message) {
     m.includes('duplicate submissions') ||
     m.includes('already attempted') ||
     m.includes('only be attempted once') ||
-    m.includes('test already attempted')
+    m.includes('test already attempted') ||
+    m.includes('already been submitted')
+  );
+}
+
+function isSpeakingResponseQuestion(question) {
+  return (
+    question?.question_type === 'audio_to_text' ||
+    question?.question_type === 'audio_interactive' ||
+    question?.conversion_type === 'audio_to_text' ||
+    question?.conversion_type === 'both'
   );
 }
 
@@ -124,43 +134,16 @@ const OnlineExamTaking = () => {
       // Prevent multiple API calls
       if (isExamFetched) return;
 
+      let serverStartedAt = null;
       try {
         setLoading(true);
         setIsExamFetched(true);
 
-        // First, check if student has already attempted this test
-        try {
-          // Check completed exams first
-          const completedExamsRes = await api.get('/student/completed-exams');
-          const completedExamIds = (completedExamsRes.data.data || []).map(String);
-          const examIdNorm = String(examId);
-
-          if (completedExamIds.includes(examIdNorm)) {
-            setAlreadyAttempted(true);
-            return;
-          }
-
-          // Try to start the test - this will give us attempt_id if not already attempted
-          // or fail if already attempted
-          try {
-            const startRes = await api.post(`/student/tests/${examId}/start`);
-            // Store the attempt_id from the response
-            setAttemptId(startRes.data.data.attempt_id);
-            console.log('✅ Test started successfully, attempt_id:', startRes.data.data.attempt_id);
-          } catch (startErr) {
-            if (startErr.response?.status === 409 ||
-              startErr.response?.data?.message?.includes('already attempted') ||
-              startErr.response?.data?.message?.includes('Test already attempted')) {
-              setAlreadyAttempted(true);
-              return;
-            }
-            // If it's a different error, continue with exam loading
-            console.warn('Test start failed:', startErr.response?.data?.message);
-          }
-        } catch (err) {
-          console.warn('Could not check completed exams:', err);
-          // Continue with exam loading if check fails
-        }
+        const startRes = await api.post(`/student/tests/${examId}/start`);
+        setAttemptId(startRes.data.data.attempt_id);
+        const startedAt = new Date(startRes.data.data.started_at).getTime();
+        serverStartedAt = Number.isNaN(startedAt) ? Date.now() : startedAt;
+        setStartTime(serverStartedAt);
 
         // Get the test details to check if it's a random assignment test
         try {
@@ -170,7 +153,8 @@ const OnlineExamTaking = () => {
           // Set exam duration from the test data
           const duration = testData.duration || 0;
           setExamDuration(duration);
-          setTimeRemaining(duration * 60); // Convert minutes to seconds
+          const elapsedSeconds = serverStartedAt ? (Date.now() - serverStartedAt) / 1000 : 0;
+          setTimeRemaining(Math.max(0, duration * 60 - elapsedSeconds));
 
 
           // Check if this is a random assignment test
@@ -200,7 +184,12 @@ const OnlineExamTaking = () => {
           throw err; // Re-throw to be caught by outer catch
         }
       } catch (err) {
-        showError('Failed to load exam.');
+        const message = err.response?.data?.message || '';
+        if (isExamClosedByServerMessage(message)) {
+          setAlreadyAttempted(true);
+          return;
+        }
+        showError(message || 'Failed to load exam.');
         setExam(null);
       } finally {
         setLoading(false);
@@ -258,45 +247,9 @@ const OnlineExamTaking = () => {
     }
   }, [timeRemaining, isTimerActive, examDuration, autoSubmitted]);
 
-  // Timer persistence - save timer state to localStorage
-  useEffect(() => {
-    if (isTimerActive && timeRemaining > 0) {
-      localStorage.setItem(`exam_timer_${examId}`, JSON.stringify({
-        timeRemaining,
-        startTime: startTime,
-        examDuration
-      }));
-    }
-  }, [timeRemaining, isTimerActive, examId, startTime, examDuration]);
-
-  // Load timer state from localStorage on component mount
-  useEffect(() => {
-    if (examId && examDuration > 0) {
-      const savedTimer = localStorage.getItem(`exam_timer_${examId}`);
-      if (savedTimer) {
-        try {
-          const timerData = JSON.parse(savedTimer);
-          const elapsed = startTime ? (Date.now() - startTime) / 1000 : 0;
-          const remaining = Math.max(0, timerData.timeRemaining - elapsed);
-          console.log('Loading timer from localStorage:', { timerData, elapsed, remaining });
-          setTimeRemaining(remaining);
-          if (remaining > 0) {
-            setIsTimerActive(true);
-          }
-        } catch (err) {
-          console.error('Error loading timer state:', err);
-        }
-      }
-    }
-  }, [examId, examDuration, startTime]);
-
-  // Clean up localStorage when exam is submitted
+  // Stop any active recording when the exam component unmounts.
   useEffect(() => {
     return () => {
-      if (examId) {
-        localStorage.removeItem(`exam_timer_${examId}`);
-      }
-      // Stop any ongoing recording
       if (window.currentMediaRecorder && isRecording) {
         window.currentMediaRecorder.stop();
       }
@@ -583,14 +536,17 @@ const OnlineExamTaking = () => {
       const timeTakenMs = startTime ? endTime - startTime : null;
 
       // Check if this is a listening or speaking module that requires audio submission
-      const isListeningModule = exam?.module_id === 'LISTENING' || exam?.module_id === 'SPEAKING' || questions.some(q => q.question_type === 'audio_to_text' || q.conversion_type === 'audio_to_text' || q.conversion_type === 'both');
+      const isSpeakingExam = String(exam?.module_id || '').toUpperCase() === 'SPEAKING' ||
+        questions.some(isSpeakingResponseQuestion);
 
-      if (isListeningModule) {
-        // Validate that all questions have audio recordings for listening modules
+      if (isSpeakingExam) {
+        // Speaking assessments require a real recording for every scored question.
         const missingRecordings = [];
         questions.forEach((question, index) => {
           const qKey = examQuestionAnswerKey(question, index);
-          if (!recordings[qKey]) {
+          const requiresRecording = String(exam?.module_id || '').toUpperCase() === 'SPEAKING' ||
+            isSpeakingResponseQuestion(question);
+          if (requiresRecording && !recordings[qKey]) {
             missingRecordings.push(index + 1);
           }
         });
@@ -602,9 +558,11 @@ const OnlineExamTaking = () => {
         }
 
         // Submit using FormData for listening modules with audio recordings
-        console.log('Submitting listening module with audio recordings to online listening endpoint');
+        console.log('Submitting speaking assessment recordings for server-side evaluation');
         const formData = new FormData();
         formData.append('test_id', examId);
+        formData.append('attempt_id', attemptId);
+        formData.append('time_taken_ms', String(timeTakenMs || 0));
 
         // Process each question — audio/text keys use stable question id (order differs from DB after shuffle)
         questions.forEach((question, index) => {
@@ -643,7 +601,8 @@ const OnlineExamTaking = () => {
         }
 
         const res = await api.post('/test-management/submit-online-listening-test', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 600000
         });
 
         if (res.data.success) {
@@ -1481,7 +1440,7 @@ const OnlineExamTaking = () => {
                     )}
 
                   {/* Audio recording interface for listening modules */}
-                  {(currentQuestion.question_type === 'audio' || currentQuestion.question_type === 'audio_to_text' || currentQuestion.conversion_type === 'audio_to_text' || currentQuestion.conversion_type === 'both' || currentQuestion.audio_url || exam?.module_id === 'LISTENING' || exam?.module_id === 'SPEAKING') && (
+                  {(isSpeakingResponseQuestion(currentQuestion) || String(exam?.module_id || '').toUpperCase() === 'SPEAKING') && (
                     <motion.div
                       className="space-y-6"
                       initial={{ opacity: 0 }}
@@ -1576,7 +1535,7 @@ const OnlineExamTaking = () => {
                   )}
 
                   {/* Fallback: Show recording interface for any question with audio_url or listening module */}
-                  {(!currentQuestion.question_type && currentQuestion.audio_url) || (exam?.module_id === 'LISTENING' && !currentQuestion.question_type) && (
+                  {!currentQuestion.question_type && String(exam?.module_id || '').toUpperCase() === 'SPEAKING' && (
                     <motion.div
                       className="space-y-6"
                       initial={{ opacity: 0 }}

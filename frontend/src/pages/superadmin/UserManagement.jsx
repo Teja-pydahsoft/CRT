@@ -96,6 +96,8 @@ const UserManagement = () => {
   const [editUserRoleId, setEditUserRoleId] = useState('');
   const [editUserPermissions, setEditUserPermissions] = useState({});
   const [editUserStatus, setEditUserStatus] = useState('active');
+  const [editSdmsCollegeId, setEditSdmsCollegeId] = useState('');
+  const [editSdmsCourseId, setEditSdmsCourseId] = useState('');
 
   // Initial data loading
   useEffect(() => {
@@ -398,6 +400,8 @@ const UserManagement = () => {
     setEditUserRoleId(user.role_id?._id || user.role_id || '');
     setEditUserPermissions(JSON.parse(JSON.stringify(user.permissions || user.role_id?.permissions || {})));
     setEditUserStatus(user.status || 'active');
+    setEditSdmsCollegeId(user.sdms_college_id ?? '');
+    setEditSdmsCourseId(user.sdms_course_id ?? '');
     setShowEditUserModal(true);
   };
 
@@ -409,7 +413,9 @@ const UserManagement = () => {
       const res = await api.put(`/user-management/users/${editingUser._id}`, {
         role_id: editUserRoleId,
         permissions: editUserPermissions,
-        status: editUserStatus
+        status: editUserStatus,
+        sdms_college_id: editSdmsCollegeId === '' ? null : Number(editSdmsCollegeId),
+        sdms_course_id: editSdmsCourseId === '' ? null : Number(editSdmsCourseId)
       });
 
       if (res.data.success) {
@@ -1387,6 +1393,37 @@ const UserManagement = () => {
                 </div>
               </div>
 
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <p className="text-sm font-semibold text-blue-900">SDMS reporting scope</p>
+                <p className="mt-1 text-xs text-blue-800">
+                  Assign a college to Campus Admins and a course to Course Admins. These IDs are available in the SDMS directory.
+                </p>
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <label className="text-xs font-bold text-gray-700">
+                    SDMS College ID
+                    <input
+                      type="number"
+                      min="1"
+                      value={editSdmsCollegeId}
+                      onChange={(event) => setEditSdmsCollegeId(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-gray-300 px-3.5 py-2 text-sm font-normal"
+                      placeholder="Required for Campus Admin"
+                    />
+                  </label>
+                  <label className="text-xs font-bold text-gray-700">
+                    SDMS Course ID
+                    <input
+                      type="number"
+                      min="1"
+                      value={editSdmsCourseId}
+                      onChange={(event) => setEditSdmsCourseId(event.target.value)}
+                      className="mt-1 w-full rounded-xl border border-gray-300 px-3.5 py-2 text-sm font-normal"
+                      placeholder="Required for Course Admin"
+                    />
+                  </label>
+                </div>
+              </div>
+
               {/* Permissions Matrix */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -1646,4 +1683,3 @@ const UserManagement = () => {
 };
 
 export default UserManagement;
-

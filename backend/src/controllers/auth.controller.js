@@ -3,6 +3,7 @@ const env = require('../config/env');
 const User = require('../models/User');
 const Role = require('../models/Role');
 const hrmsService = require('../services/hrms.service');
+const sdmsService = require('../services/sdms.service');
 
 const ALL_PAGES = [
   'dashboard',
@@ -13,6 +14,45 @@ const ALL_PAGES = [
   'progress_tracking',
   'user_management'
 ];
+
+const createStudentLoginResponse = (student, res) => {
+  const permissions = {};
+  const identity = {
+    id: `sdms-${student.id}`,
+    sdms_student_id: student.id,
+    auth_source: 'sdms',
+    username: student.username,
+    name: student.name,
+    email: student.email,
+    role: 'student',
+    role_name: 'student',
+    permissions,
+    college_id: student.college_id,
+    course_id: student.course_id,
+    branch_id: student.branch_id,
+    year: student.year,
+    semester: student.semester,
+    section: student.section
+  };
+  const tokenPayload = {
+    ...identity,
+    sub: String(student.id)
+  };
+  const accessToken = jwt.sign(tokenPayload, env.JWT_SECRET_KEY, { expiresIn: env.JWT_EXPIRES_IN });
+  const refreshToken = jwt.sign(
+    { id: String(student.id), sdms_student_id: student.id, auth_source: 'sdms' },
+    env.JWT_REFRESH_SECRET_KEY,
+    { expiresIn: env.JWT_REFRESH_EXPIRES_IN }
+  );
+
+  return res.json({
+    success: true,
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    data: { access_token: accessToken, refresh_token: refreshToken },
+    user: identity
+  });
+};
 
 exports.login = async (req, res) => {
   try {
@@ -32,6 +72,14 @@ exports.login = async (req, res) => {
         { email: cleanIdentifier }
       ]
     }).populate('role_id');
+
+    if (!user || user.role === 'student') {
+      const student = await sdmsService.authenticateStudent(cleanIdentifier, password);
+      if (student) return createStudentLoginResponse(student, res);
+      if (user?.role === 'student') {
+        return res.status(401).json({ success: false, message: 'Invalid student ID or password' });
+      }
+    }
 
     let isAuthenticated = false;
 
@@ -97,6 +145,8 @@ exports.login = async (req, res) => {
       role_name: user.role_id?.name || user.role,
       permissions: permissions,
       campus_id: user.campus_id,
+      sdms_college_id: user.sdms_college_id,
+      sdms_course_id: user.sdms_course_id,
       course_id: user.course_id,
       batch_id: user.batch_id
     };
@@ -125,6 +175,8 @@ exports.login = async (req, res) => {
         designation_name: user.designation_name,
         phone_number: user.phone_number,
         campus_id: user.campus_id,
+        sdms_college_id: user.sdms_college_id,
+        sdms_course_id: user.sdms_course_id,
         course_id: user.course_id,
         batch_id: user.batch_id
       }
@@ -147,6 +199,34 @@ exports.refreshToken = async (req, res) => {
     }
 
     const decoded = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET_KEY);
+    if (
+      decoded.auth_source === 'sdms' &&
+      Number.isSafeInteger(Number(decoded.sdms_student_id)) &&
+      Number(decoded.sdms_student_id) > 0
+    ) {
+      const student = await sdmsService.getStudentIdentityById(decoded.sdms_student_id);
+      if (!student) return res.status(401).json({ success: false, message: 'Invalid refresh token' });
+      const permissions = {};
+      const accessToken = jwt.sign({
+        id: `sdms-${student.id}`,
+        sub: String(student.id),
+        sdms_student_id: student.id,
+        auth_source: 'sdms',
+        username: student.username,
+        name: student.name,
+        email: student.email,
+        role: 'student',
+        role_name: 'student',
+        permissions,
+        college_id: student.college_id,
+        course_id: student.course_id,
+        branch_id: student.branch_id,
+        year: student.year,
+        semester: student.semester,
+        section: student.section
+      }, env.JWT_SECRET_KEY, { expiresIn: env.JWT_EXPIRES_IN });
+      return res.json({ success: true, data: { access_token: accessToken }, access_token: accessToken });
+    }
     const user = await User.findById(decoded.id).populate('role_id');
 
     if (!user) {
@@ -175,6 +255,8 @@ exports.refreshToken = async (req, res) => {
         role_name: user.role_id?.name || user.role,
         permissions: permissions,
         campus_id: user.campus_id,
+        sdms_college_id: user.sdms_college_id,
+        sdms_course_id: user.sdms_course_id,
         course_id: user.course_id,
         batch_id: user.batch_id
       },
@@ -194,6 +276,28 @@ exports.refreshToken = async (req, res) => {
 
 exports.getMe = async (req, res) => {
   try {
+    if (req.user.auth_source === 'sdms') {
+      const student = await sdmsService.getStudentIdentityById(req.user.sdms_student_id);
+      if (!student) return res.status(404).json({ success: false, message: 'Student account not found in SDMS' });
+      const user = {
+        id: `sdms-${student.id}`,
+        sdms_student_id: student.id,
+        auth_source: 'sdms',
+        username: student.username,
+        name: student.name,
+        email: student.email,
+        role: 'student',
+        role_name: 'student',
+        permissions: {},
+        college_id: student.college_id,
+        course_id: student.course_id,
+        branch_id: student.branch_id,
+        year: student.year,
+        semester: student.semester,
+        section: student.section
+      };
+      return res.json({ success: true, user, data: user });
+    }
     const user = await User.findById(req.user.id).populate('role_id').lean();
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
