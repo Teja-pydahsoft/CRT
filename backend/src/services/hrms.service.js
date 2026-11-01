@@ -22,7 +22,7 @@ class HRMSService {
     try {
       const uri = env.HRMS_MONGODB_URI;
       this.connection = await mongoose.createConnection(uri, {
-        maxPoolSize: 10,
+        maxPoolSize: 5,
         serverSelectionTimeoutMS: 8000
       }).asPromise();
 

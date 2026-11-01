@@ -22,7 +22,7 @@ class SDMSService {
         database: env.DB_NAME || 'student_database',
         ssl: env.DB_SSL ? { rejectUnauthorized: false } : undefined,
         waitForConnections: true,
-        connectionLimit: 15,
+        connectionLimit: 5,
         queueLimit: 0,
         enableKeepAlive: true,
         keepAliveInitialDelay: 10000

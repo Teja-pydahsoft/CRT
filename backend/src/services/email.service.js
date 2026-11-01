@@ -4,8 +4,14 @@ const env = require('../config/env');
 class EmailService {
   async sendEmail({ to, subject, htmlContent }) {
     if (!env.BREVO_API_KEY) {
-      console.log(`[Email Mock] To: ${to} | Subject: ${subject}`);
-      return { success: true, mock: true };
+      if (env.NODE_ENV !== 'production') {
+        console.log(`[Email Mock] To: ${to} | Subject: ${subject}`);
+        return { success: true, mock: true };
+      }
+
+      const error = 'Email delivery is not configured: BREVO_API_KEY is missing';
+      console.error(`[EmailService] ${error}`);
+      return { success: false, error };
     }
 
     try {

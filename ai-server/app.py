@@ -1,34 +1,34 @@
 import os
 import io
 import base64
+import binascii
+import re
+import subprocess
 import tempfile
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from gtts import gTTS
 from dotenv import load_dotenv
 
 load_dotenv()
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 CORS(app)
 
 _whisper_model = None
 
+
 def get_whisper_model():
-    """
-    Lazy load Whisper model on demand to reduce startup time.
-    """
     global _whisper_model
     if _whisper_model is None:
-        try:
-            import whisper
-            model_name = os.environ.get('WHISPER_MODEL', 'tiny')
-            print(f"[AI Server] Initializing Whisper model '{model_name}'...")
-            _whisper_model = whisper.load_model(model_name)
-            print(f"[AI Server] Whisper model '{model_name}' loaded successfully on {_whisper_model.device}")
-        except Exception as e:
-            print(f"[AI Server] Warning: Could not initialize Whisper model: {e}")
-            _whisper_model = None
+        from faster_whisper import WhisperModel
+
+        _whisper_model = WhisperModel(
+            os.environ.get('WHISPER_MODEL', 'tiny'),
+            device=os.environ.get('WHISPER_DEVICE', 'cpu'),
+            compute_type=os.environ.get('WHISPER_COMPUTE_TYPE', 'int8'),
+            cpu_threads=int(os.environ.get('WHISPER_CPU_THREADS', '2'))
+        )
     return _whisper_model
 
 
@@ -55,7 +55,7 @@ def health():
                 'aliases': ['/ai/generate-tts', '/tts', '/text-to-speech'],
                 'method': 'POST',
                 'input': 'json { text: string, language?: string, accent?: string, format?: "base64" | "audio" }',
-                'output': 'json { success: true, audio_base64: string } OR audio/mpeg stream'
+                'output': 'json { success: true, audio_base64: string } OR audio/wav stream'
             }
         }
     })
@@ -73,28 +73,26 @@ def audio_to_text():
     """
     tmp_path = None
     try:
-        language = request.form.get('language') or (request.json.get('language') if request.is_json and request.json else None) or 'en'
-        
-        # 1. Check if audio is uploaded via multipart form
-        if 'audio' in request.files or 'file' in request.files:
-            audio_file = request.files.get('audio') or request.files.get('file')
+        data = request.get_json(silent=True) or {}
+        language = request.form.get('language') or data.get('language') or 'en'
+
+        audio_file = request.files.get('audio') or request.files.get('file')
+        if audio_file:
             suffix = os.path.splitext(audio_file.filename)[1] or '.wav'
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                 audio_file.save(tmp.name)
                 tmp_path = tmp.name
 
-        # 2. Check if audio is supplied as base64 in JSON payload
-        elif request.is_json and request.json:
+        elif request.is_json:
             b64_audio = (
-                request.json.get('audio') or 
-                request.json.get('audio_base64') or 
-                request.json.get('audio_data')
+                data.get('audio') or
+                data.get('audio_base64') or
+                data.get('audio_data')
             )
             if b64_audio:
-                # Strip potential data URI header (e.g. data:audio/wav;base64,...)
                 if ',' in b64_audio:
                     b64_audio = b64_audio.split(',', 1)[1]
-                audio_bytes = base64.b64decode(b64_audio)
+                audio_bytes = base64.b64decode(b64_audio, validate=True)
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp:
                     tmp.write(audio_bytes)
                     tmp_path = tmp.name
@@ -105,20 +103,28 @@ def audio_to_text():
                 'message': 'Audio input required. Send an audio file as multipart form-data (key "audio") or JSON { "audio": "<base64>" }.'
             }), 400
 
-        # Perform transcription using Whisper
-        transcription_text = ''
         try:
             model = get_whisper_model()
-            if model is not None:
-                result = model.transcribe(tmp_path, language=language)
-                transcription_text = result.get('text', '').strip()
-            else:
-                raise RuntimeError("Whisper model not loaded in environment")
-        except Exception as whisper_err:
-            print(f"[AI Server] Whisper transcription warning: {whisper_err}")
+        except Exception:
+            app.logger.exception('Could not load the local speech recognition model')
             return jsonify({
                 'success': False,
-                'error': str(whisper_err)
+                'error': 'Local speech recognition model is unavailable.'
+            }), 503
+
+        try:
+            segments, _ = model.transcribe(
+                tmp_path,
+                language=language,
+                beam_size=1,
+                condition_on_previous_text=False
+            )
+            transcription_text = ' '.join(segment.text.strip() for segment in segments).strip()
+        except Exception:
+            app.logger.exception('Local speech transcription failed')
+            return jsonify({
+                'success': False,
+                'error': 'Local speech transcription failed.'
             }), 500
 
         return jsonify({
@@ -128,20 +134,24 @@ def audio_to_text():
             'language': language
         })
 
-    except Exception as e:
-        print(f"[AI Server] Audio-to-Text Error: {e}")
+    except (ValueError, binascii.Error):
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Audio data must be valid base64.'
+        }), 400
+    except Exception:
+        app.logger.exception('Audio-to-text request failed')
+        return jsonify({
+            'success': False,
+            'error': 'Audio-to-text request failed.'
         }), 500
 
     finally:
-        # Secure cleanup of temporary file
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
             except OSError:
-                pass
+                app.logger.exception('Could not remove temporary audio file')
 
 
 # ============================================================================
@@ -153,34 +163,27 @@ def audio_to_text():
 @app.route('/text-to-speech', methods=['POST'])
 def text_to_voice():
     """
-    Converts input text directly to speech voice audio (base64 or MP3 binary stream).
+    Synthesizes input text as a WAV audio response using local eSpeak NG.
     """
     try:
-        # Support JSON, Form-data, and Query parameters (for GET /tts?text=...)
         data = request.get_json(silent=True) or {}
         text = (
-            data.get('text') or 
-            request.form.get('text') or 
-            request.args.get('text') or 
+            data.get('text') or
+            request.form.get('text') or
+            request.args.get('text') or
             ''
         ).strip()
-        
+
         language = (
-            data.get('language') or 
-            request.form.get('language') or 
-            request.args.get('language') or 
+            data.get('language') or
+            request.form.get('language') or
+            request.args.get('language') or
             'en'
         )
-        accent = (
-            data.get('accent') or 
-            request.form.get('accent') or 
-            request.args.get('accent') or 
-            'com'
-        )
         return_format = (
-            data.get('format') or 
-            request.form.get('format') or 
-            request.args.get('format') or 
+            data.get('format') or
+            request.form.get('format') or
+            request.args.get('format') or
             'base64'
         ).lower()
 
@@ -190,46 +193,62 @@ def text_to_voice():
                 'message': 'Text input required. Send { "text": "Your sentence here" }.'
             }), 400
 
-        # Generate voice speech using gTTS in-memory
-        tts = gTTS(text=text, lang=language, tld=accent)
-        audio_stream = io.BytesIO()
-        tts.write_to_fp(audio_stream)
-        audio_stream.seek(0)
-        audio_bytes = audio_stream.read()
+        if len(text) > 5000:
+            return jsonify({
+                'success': False,
+                'message': 'Text input cannot exceed 5000 characters.'
+            }), 400
 
-        # Check if the client requested an audio stream directly or base64 JSON
+        voice = language.lower().replace('_', '-')
+        if not re.fullmatch(r'[a-z]{2,3}(?:-[a-z0-9]{2,8})?', voice):
+            return jsonify({
+                'success': False,
+                'message': 'Language must be a valid language code.'
+            }), 400
+        if voice == 'en':
+            voice = 'en-us'
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = os.path.join(temp_dir, 'speech.wav')
+            subprocess.run(
+                ['espeak-ng', '-v', voice, '-s', '150', '-w', audio_path, text],
+                check=True,
+                capture_output=True,
+                timeout=60
+            )
+            with open(audio_path, 'rb') as audio_file:
+                audio_bytes = audio_file.read()
+
         wants_audio_stream = (
-            return_format in ['audio', 'stream', 'mp3', 'binary'] or 
+            return_format in ['audio', 'stream', 'wav', 'binary'] or
             'audio/' in request.headers.get('Accept', '')
         )
 
         if wants_audio_stream:
             return send_file(
                 io.BytesIO(audio_bytes),
-                mimetype='audio/mpeg',
+                mimetype='audio/wav',
                 as_attachment=False,
-                download_name='voice.mp3'
+                download_name='voice.wav'
             )
 
-        # Default: Base64 JSON response
         audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
         return jsonify({
             'success': True,
             'text': text,
             'audio_base64': audio_b64,
-            'format': 'mp3',
-            'content_type': 'audio/mpeg'
+            'format': 'wav',
+            'content_type': 'audio/wav'
         })
 
-    except Exception as e:
-        print(f"[AI Server] Text-to-Voice Error: {e}")
+    except Exception:
+        app.logger.exception('Text-to-voice request failed')
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Text-to-voice request failed.'
         }), 500
 
 
 if __name__ == '__main__':
     port = int(os.environ.get('AI_SERVER_PORT', 8001))
-    print(f"🚀 AI Server starting on port {port} (Dedicated 1-to-1 Audio <-> Text Conversion API)")
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=False)

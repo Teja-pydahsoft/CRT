@@ -1,299 +1,98 @@
-# 🚀 AI-VERSANT Deployment Guide
+# Shared Lightsail deployment
 
-This guide covers multiple deployment options for the AI-VERSANT application using CI/CD pipelines.
+## What runs on the instance
 
-## 📋 Prerequisites
+| Service | Memory limit | Notes |
+| --- | ---: | --- |
+| MongoDB | 320 MiB | Persistent Docker volume; WiredTiger cache capped at 256 MiB |
+| Express backend | 256 MiB | V8 heap capped at 160 MiB; Mongo pool capped at 10 |
+| Speech AI service | 768 MiB | Local faster-whisper tiny/int8; one Gunicorn worker/thread |
+| Frontend Nginx | 48 MiB | Serves the built SPA and proxies API/Socket.IO |
 
-- GitHub repository with the code
-- Docker Hub account (for container registry)
-- One or more of the following deployment targets:
-  - Render.com account
-  - AWS EC2 instance
-  - Any cloud provider supporting Docker
+The product containers have a combined memory ceiling of about 1.4 GiB. This targets the shared 3.7 GiB Lightsail instance described by the operator, which already runs a separate face-recognition service. At the reported snapshot about 2.1 GiB was available, but available memory and AI inference load vary. Monitor `docker stats` and host memory under real workload; this configuration is not suitable for a 1 GiB instance or guaranteed to support high concurrency.
 
-## 🔧 Setup Instructions
+The existing face-recognition service publishes host port 8000. The product API uses port 8000 only inside its private Docker network, and its speech service uses private port 8001; neither binds those host ports. Only the product frontend publishes host port 80, which must remain unused by other host services. The product runs its own MongoDB volume and does not connect to, replace, or publish the existing MongoDB container.
 
-### 1. **GitHub Secrets Configuration**
+## Prerequisites
 
-Go to your GitHub repository → Settings → Secrets and variables → Actions, and add these secrets:
+- Ubuntu Lightsail instance with at least 4 GiB RAM and adequate disk. This deployment is not designed for 1 GiB RAM.
+- Docker Engine and the Docker Compose plugin.
+- A domain name and HTTPS termination for production.
+- Outbound internet access for downloading the Whisper model on first transcription. Once downloaded, the model is retained in the `ai_model_cache` volume. Audio inference itself runs locally with no external AI API key or provider charge.
+- `espeak-ng` is installed in the AI service image and synthesizes speech locally.
+- AWS S3 and Brevo credentials for file storage and real email delivery. Those integrations can be left unconfigured, but their dependent features will not work; production email requests now return an explicit configuration error if Brevo is missing.
+- MySQL/RDS credentials only if the optional SDMS/organization data integration is enabled.
+- A container registry if you build images away from the Lightsail host (recommended).
 
-#### Required Secrets:
-```bash
-# Docker Hub
-DOCKER_USERNAME=your_docker_hub_username
-DOCKER_PASSWORD=your_docker_hub_password
+## Configure
 
-# Application Environment Variables
-JWT_SECRET_KEY=your_super_secure_jwt_secret_key_here_2024
-AWS_ACCESS_KEY=your_aws_access_key_here
-AWS_SECRET_KEY=your_aws_secret_key_here
-AWS_S3_BUCKET=your_s3_bucket_name_here
-BREVO_API_KEY=your_brevo_api_key_here
-BREVO_SENDER_EMAIL=noreply@yourdomain.com
-BULKSMS_USERNAME=your_bulksms_username_here
-BULKSMS_PASSWORD=your_bulksms_password_here
-```
+1. Clone the repository on the instance and enter its root directory.
+2. Copy `env.example` to `.env`; enter strong, unique MongoDB and JWT secrets. Keep MongoDB usernames and passwords URL-safe because they are included in connection URIs.
+3. If building on a separate machine or CI, set `BACKEND_IMAGE`, `AI_SERVER_IMAGE`, and `FRONTEND_IMAGE` in `.env` to the pushed image tags. Make sure the Lightsail host can pull those images.
+4. Open only SSH and the public web ports in the Lightsail firewall. Do not open MongoDB (27017), backend (8000), or AI (8001).
 
-#### Optional Secrets (for specific deployment targets):
-```bash
-# Render.com
-RENDER_API_KEY=your_render_api_key
-RENDER_BACKEND_SERVICE_ID=your_render_backend_service_id
-RENDER_FRONTEND_SERVICE_ID=your_render_frontend_service_id
-
-# AWS EC2
-AWS_ACCESS_KEY_ID=your_aws_access_key_id
-AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
-EC2_HOST=your_ec2_public_ip
-EC2_USERNAME=ubuntu
-EC2_SSH_KEY=your_ec2_private_ssh_key
-EC2_PORT=22
-
-# Notifications
-SLACK_WEBHOOK_URL=your_slack_webhook_url_for_notifications
-```
-
-### 2. **Environment Configuration**
-
-Copy the environment template and configure it:
-```bash
-cp env.example .env
-# Edit .env with your actual values
-```
-
-## 🚀 Deployment Options
-
-### Option 1: **Render.com (Recommended for Beginners)**
-
-1. **Create Render Services:**
-   - Go to [Render.com](https://render.com)
-   - Create a new "Web Service" for backend
-   - Create a new "Static Site" for frontend
-
-2. **Configure Backend Service:**
-   - Connect your GitHub repository
-   - Set build command: `cd backend && pip install -r requirements.txt`
-   - Set start command: `cd backend && python main.py`
-   - Add environment variables from your `.env` file
-
-3. **Configure Frontend Service:**
-   - Connect your GitHub repository
-   - Set build command: `cd frontend && npm install && npm run build`
-   - Set publish directory: `frontend/dist`
-   - Add environment variables for API URLs
-
-4. **Update GitHub Secrets:**
-   - Add your Render service IDs and API key to GitHub secrets
-
-### Option 2: **AWS EC2 (Full Control)**
-
-1. **Launch EC2 Instance:**
-   ```bash
-   # Ubuntu 22.04 LTS recommended
-   # Instance type: t3.medium or larger
-   # Security groups: Allow ports 22, 80, 443, 8000, 3000
-   ```
-
-2. **Configure EC2 Instance:**
-   ```bash
-   # SSH into your instance
-   ssh -i your-key.pem ubuntu@your-ec2-ip
-   
-   # Install Docker
-   curl -fsSL https://get.docker.com -o get-docker.sh
-   sudo sh get-docker.sh
-   sudo usermod -aG docker ubuntu
-   
-   # Install Docker Compose
-   sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-   sudo chmod +x /usr/local/bin/docker-compose
-   
-   # Clone your repository
-   git clone https://github.com/yourusername/ai-versant.git
-   cd ai-versant
-   ```
-
-3. **Deploy with Docker Compose:**
-   ```bash
-   # Copy environment file
-   cp env.example .env
-   # Edit .env with your values
-   
-   # Start services
-   docker-compose up -d
-   
-   # Check status
-   docker-compose ps
-   docker-compose logs -f
-   ```
-
-### Option 3: **Docker Hub + Any Cloud Provider**
-
-1. **Build and Push Images:**
-   ```bash
-   # Build backend
-   docker build -t yourusername/ai-versant-backend ./backend
-   docker push yourusername/ai-versant-backend
-   
-   # Build frontend
-   docker build -t yourusername/ai-versant-frontend ./frontend
-   docker push yourusername/ai-versant-frontend
-   ```
-
-2. **Deploy on any cloud provider:**
-   - Use the pushed Docker images
-   - Configure environment variables
-   - Set up reverse proxy (Nginx) if needed
-
-## 🔄 CI/CD Pipeline Features
-
-The GitHub Actions workflow includes:
-
-### **Automated Testing:**
-- ✅ Backend Python tests with pytest
-- ✅ Frontend JavaScript/React tests
-- ✅ Code linting and formatting checks
-- ✅ Security vulnerability scanning
-
-### **Automated Building:**
-- ✅ Docker image building and pushing
-- ✅ Frontend production build
-- ✅ Multi-platform support
-
-### **Automated Deployment:**
-- ✅ Render.com deployment
-- ✅ AWS EC2 deployment
-- ✅ Docker Hub registry updates
-
-### **Monitoring & Notifications:**
-- ✅ Health checks for all services
-- ✅ Slack notifications for success/failure
-- ✅ Coverage reports and security scans
-
-## 🛠️ Manual Deployment Commands
-
-### **Local Development:**
-```bash
-# Backend
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python main.py
-
-# Frontend
-cd frontend
-npm install
-npm run dev
-```
-
-### **Production with Docker:**
-```bash
-# Using Docker Compose
-docker-compose up -d
-
-# Using individual containers
-docker run -d --name mongodb -p 27017:27017 mongo:6.0
-docker run -d --name backend -p 8000:8000 --env-file .env yourusername/ai-versant-backend
-docker run -d --name frontend -p 3000:80 yourusername/ai-versant-frontend
-```
-
-## 🔍 Health Checks
-
-After deployment, verify everything is working:
+Generate secrets on a trusted machine, for example:
 
 ```bash
-# Backend health
-curl http://your-domain:8000/health
-
-# Frontend
-curl http://your-domain:3000
-
-# Database connection
-curl http://your-domain:8000/superadmin/database-status
+openssl rand -hex 32
 ```
 
-## 🚨 Troubleshooting
+Use distinct generated values for `MONGO_ROOT_PASSWORD`, `JWT_SECRET_KEY`, and `JWT_REFRESH_SECRET_KEY`. Leave `WHISPER_MODEL=tiny` and `WHISPER_CPU_THREADS=2` for the shared instance unless a different model has been load-tested.
 
-### **Common Issues:**
+## Build and start
 
-1. **Port Conflicts:**
-   - Ensure ports 8000, 3000, 27017 are available
-   - Check firewall settings
+Build the images on a workstation or CI runner with Docker, not on the 1 GB server. A frontend production build can exceed the server's available build memory. Authenticate to your image registry, configure the three image tags in `.env`, and run:
 
-2. **Environment Variables:**
-   - Verify all required environment variables are set
-   - Check secret values in GitHub Actions
-
-3. **Database Connection:**
-   - Ensure MongoDB is running and accessible
-   - Check connection string format
-
-4. **CORS Issues:**
-   - Verify CORS_ORIGINS includes your frontend URL
-   - Check ALLOW_ALL_CORS setting
-
-### **Logs:**
 ```bash
-# Docker Compose logs
-docker-compose logs -f backend
-docker-compose logs -f frontend
-docker-compose logs -f mongodb
-
-# Individual container logs
-docker logs ai-versant-backend
-docker logs ai-versant-frontend
+docker compose build
+docker compose push backend ai-server frontend
 ```
 
-## 📊 Monitoring
+The build does not need production credentials. Compose still requires non-empty settings while parsing its configuration, so CI can supply temporary placeholder values for the required MongoDB and JWT variables; keep real secrets only in the Lightsail `.env`.
 
-### **Performance Monitoring:**
-- Backend metrics: `http://your-domain:8000/performance/metrics`
-- System health: `http://your-domain:8000/performance/health`
+On Lightsail, pull and start the prebuilt images:
 
-### **Database Monitoring:**
-- Connection status: `http://your-domain:8000/superadmin/database-status`
-- Debug connection: `http://your-domain:8000/superadmin/debug-database-connection`
+```bash
+docker compose pull
+docker compose up -d --no-build
+docker compose ps
+```
 
-## 🔐 Security Considerations
+For a one-off local deployment where builds are already known to fit:
 
-1. **Environment Variables:**
-   - Never commit `.env` files to version control
-   - Use strong, unique passwords and API keys
-   - Rotate secrets regularly
+```bash
+docker compose up -d --build
+```
 
-2. **Network Security:**
-   - Use HTTPS in production
-   - Configure proper firewall rules
-   - Use VPN for database access if needed
+The application is served on port 80 by default. Set `FRONTEND_PORT` if another host service already owns that port. Configure HTTPS at a Lightsail load balancer or another TLS-terminating proxy; do not expose the backend or database to the internet.
 
-3. **Application Security:**
-   - Keep dependencies updated
-   - Regular security scans
-   - Monitor for vulnerabilities
+## Verify and monitor
 
-## 📈 Scaling
+```bash
+curl http://localhost/health
+curl http://localhost/api/health
+docker compose ps
+docker stats
+docker compose logs --tail=100
+```
 
-### **Horizontal Scaling:**
-- Use load balancers for multiple backend instances
-- Implement Redis for session management
-- Use MongoDB replica sets for database scaling
+The first health check is served by Nginx; the second is proxied to the Express API. Check the `ai-server` logs if transcription or TTS fails. The first transcription downloads the tiny model, so allow time and outbound internet on that first request. Later transcription and local eSpeak NG speech synthesis do not call an external speech API.
 
-### **Vertical Scaling:**
-- Increase EC2 instance size
-- Add more memory and CPU
-- Optimize database queries
+Monitor available memory, swap, and all containers during real traffic, especially while transcription is running alongside the existing face-recognition AI. A small swap file can reduce abrupt process termination during brief memory spikes, but does not replace RAM.
 
-## 🆘 Support
+## Data and operations
 
-If you encounter issues:
+- MongoDB data is stored in the `mongodb_data` Docker volume.
+- Back up MongoDB data regularly and test restoring a backup before relying on the instance.
+- Deploy updates by pushing new tagged images, updating the `*_IMAGE` values in `.env`, then running `docker compose pull` and `docker compose up -d --no-build`.
+- `docker compose down` preserves the database volume. Do not use `docker compose down --volumes` unless you intend to delete the database.
+- Review logs with `docker compose logs -f backend`, `docker compose logs -f ai-server`, or `docker compose logs -f mongodb`.
 
-1. Check the GitHub Actions logs
-2. Review application logs
-3. Verify environment configuration
-4. Test individual components
-5. Check network connectivity
+## Configuration and troubleshooting
 
----
-
-**🎉 Congratulations!** Your AI-VERSANT application is now ready for production deployment with full CI/CD automation!
+- Compose requires MongoDB credentials and both JWT secrets; startup fails with a configuration error if they are missing.
+- MySQL/RDS is not hosted by this Compose stack. Configure `DB_HOST`, `DB_USER`, and related values in `.env` only when using that external integration.
+- Encode special characters in MongoDB credentials before placing them in the URI, or use URL-safe random passwords.
+- Set `CORS_ORIGINS` to the frontend origins that actually call the API directly. Same-origin traffic through the included Nginx proxy does not require CORS.
+- If a container repeatedly restarts or reports out-of-memory, inspect `docker stats` and system memory. Reduce concurrency or upgrade the instance; do not remove memory limits as a workaround.
+- If the app is unreachable, verify the Lightsail firewall, `FRONTEND_PORT`, DNS, and `docker compose ps`.

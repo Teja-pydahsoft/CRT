@@ -90,7 +90,7 @@ class AIService {
         success: true,
         text: text,
         audio_base64: response.data.audio_base64,
-        format: response.data.format || 'mp3'
+        format: response.data.format || 'wav'
       };
     } catch (error) {
       console.error('[AIService] Text-to-Voice Error:', error.response?.data || error.message);

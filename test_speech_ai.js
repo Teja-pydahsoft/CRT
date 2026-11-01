@@ -3,8 +3,8 @@
  * 
  * Verifies end-to-end:
  * 1. AI Server Health (Port 8001)
- * 2. 1-to-1 Text-to-Speech (TTS) Voice Synthesis (gTTS MP3 / Base64)
- * 3. 1-to-1 Speech-to-Text (STT) AI Transcription (Whisper AI GPU)
+ * 2. 1-to-1 Text-to-Speech (TTS) Voice Synthesis (local eSpeak NG WAV / Base64)
+ * 3. 1-to-1 Speech-to-Text (STT) AI Transcription (local faster-whisper CPU)
  * 4. Versant Pronunciation, Fluency & Accuracy Scoring Engine
  * 5. Node.js AIService Integration
  */
@@ -65,7 +65,7 @@ async function runVerification() {
   // -----------------------------------------------------------------
   // 3. SPEECH-TO-TEXT (STT / WHISPER AI)
   // -----------------------------------------------------------------
-  console.log('\n[TEST 3/4] Testing Speech-to-Text (STT Whisper AI Transcription)...');
+  console.log('\n[TEST 3/4] Testing local Speech-to-Text (faster-whisper CPU)...');
   const audioFilePath = path.join(__dirname, 'speech_test.wav');
   let audioBuffer;
 
@@ -105,7 +105,7 @@ async function runVerification() {
     const sttRes = await aiService.transcribeAudio(audioBuffer, 'speech_test.wav', 'en');
     
     if (sttRes.success !== false) {
-      console.log('   ✓ Audio Transcribed Successfully via Whisper AI!');
+      console.log('   ✓ Audio Transcribed Successfully via local faster-whisper!');
       console.log(`   - Audio File: speech_test.wav (${audioBuffer.length} bytes)`);
       console.log(`   - AI Transcription: "${sttRes.text || sttRes.transcription || '(Audio analyzed)'}"`);
       passed++;
